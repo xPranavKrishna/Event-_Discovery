@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "480501553805",
+    "project_id": "eventhorizon-8a65b",
+    "storage_bucket": "eventhorizon-8a65b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:480501553805:android:9ea437e4eced7a803d60c4",
+        "android_client_info": {
+          "package_name": "com.example.event_lister"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "480501553805-5f1s0dkflg1v522oj45aqmt1mai6tnu4.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDxiuzzKXMUHTpwo8xvLFr6OPTh9osWcoA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "480501553805-5f1s0dkflg1v522oj45aqmt1mai6tnu4.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
