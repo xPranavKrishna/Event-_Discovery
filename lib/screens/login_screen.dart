@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:event_lister/theme/app_theme.dart';
-import 'package:event_lister/widgets/custom_snackbar.dart';
 import 'package:event_lister/screens/signup_screen.dart';
 import 'package:event_lister/screens/forgot_password_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -55,10 +54,37 @@ class _LoginScreenState extends State<LoginScreen>
     });
 
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+      // Sign in with email and password
+      UserCredential userCredential =
+          await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
+
+      // Check if email is verified
+      User? user = userCredential.user;
+      if (user != null && !user.emailVerified) {
+        // Email not verified, send verification email again
+        await user.sendEmailVerification();
+
+        // Sign out the user since we don't want unverified users to be logged in
+        await FirebaseAuth.instance.signOut();
+
+        setState(() {
+          _isLoading = false;
+        });
+
+        if (mounted) {
+          showCustomSnackBar(
+            context,
+            'Please verify your email before logging in. A new verification email has been sent.',
+            isError: true,
+          );
+        }
+        return;
+      }
+
+      // If we get here, the email is verified
       // Navigation will be handled by the AuthWrapper in main.dart
     } on FirebaseAuthException catch (e) {
       setState(() {
@@ -373,6 +399,20 @@ class _LoginScreenState extends State<LoginScreen>
                                   ),
                                 ),
                               ],
+                            ),
+
+                            // Email verification help text
+                            const SizedBox(height: 20),
+                            Text(
+                              'Please verify your email after signup to enable login.',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.akatab(
+                                textStyle: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black54,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
                             ),
                           ],
                         ),
