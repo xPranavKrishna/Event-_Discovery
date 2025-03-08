@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:event_lister/theme/app_theme.dart';
-import 'package:event_lister/models/event.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:event_lister/screens/create_event_screen.dart';
 import 'package:event_lister/screens/profile_screen.dart';
-import 'package:event_lister/screens/event_detail_screen.dart';
+import 'package:event_lister/models/event_model.dart';
+import 'package:event_lister/widgets/event_card.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -18,697 +16,752 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _selectedIndex = 0;
-  final TextEditingController _searchController = TextEditingController();
-  bool _isSearching = false;
-  String _searchQuery = '';
-  bool _isLocationEnabled = false;
-  Position? _currentPosition;
-  double _filterDistance = 10.0; // Default 10km
-  List<Event> _events = [];
-  List<Event> _filteredEvents = [];
+  String _currentLocation = "Unknown Location";
+  String _selectedCategory = "All";
+  bool _isLoading = true;
+  bool _isLocationPermissionDenied = false;
+  List<EventModel> _events = [];
+  final searchController = TextEditingController();
+  final double _searchRadius = 10.0; // 10km radius
+  Position? _userPosition;
+
+  // List of available categories
+  final List<String> _categories = [
+    "All",
+    "Festival",
+    "Workshop",
+    "Concert",
+    "Sports"
+  ];
 
   @override
   void initState() {
     super.initState();
-    _loadEvents();
-    _requestLocationPermission();
+    _determinePosition();
   }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    searchController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadEvents() async {
-    // In a real app, this would load from Firebase
-    // Simulated data for demo purposes
-    setState(() {
-      _events = [
-        Event(
-          id: '1',
-          title: 'Summer Music Festival',
-          description:
-              'Enjoy 3 days of amazing live music performances by top artists',
-          location: 'Central Park',
-          latitude: 40.785091,
-          longitude: -73.968285,
-          date: DateTime.now().add(const Duration(days: 5)),
-          imageUrl: 'assets/images/music_festival.jpg',
-          isFree: false,
-          price: 49.99,
-          restrictions: '18+ only',
-          organizerId: 'org1',
-          organizerName: 'City Events',
-          category: 'Festival', // 🎵 Music Festival
-        ),
-        Event(
-          id: '2',
-          title: 'Tech Conference 2025',
-          description: 'Learn about the latest innovations in technology',
-          location: 'Convention Center',
-          latitude: 40.758896,
-          longitude: -73.985130,
-          date: DateTime.now().add(const Duration(days: 10)),
-          imageUrl: 'assets/images/tech_conf.jpg',
-          isFree: false,
-          price: 199.99,
-          restrictions: 'Registration required',
-          organizerId: 'org2',
-          organizerName: 'TechMinds',
-          category: 'Workshop', // 💻 Tech Conference
-        ),
-        Event(
-          id: '3',
-          title: 'Community Cleanup',
-          description:
-              'Join us to clean up the local beach and make a difference',
-          location: 'Sunset Beach',
-          latitude: 40.742054,
-          longitude: -73.935242,
-          date: DateTime.now().add(const Duration(days: 2)),
-          imageUrl: 'assets/images/cleanup.jpg',
-          isFree: true,
-          price: 0,
-          restrictions: 'Bring your own gloves',
-          organizerId: 'org3',
-          organizerName: 'Green Earth',
-          category: 'Community Service', // 🌍 Cleanup Drive
-        ),
-        Event(
-          id: '4',
-          title: 'Food & Wine Festival',
-          description:
-              'Sample dishes from top chefs and wines from around the world',
-          location: 'Downtown Square',
-          latitude: 40.712776,
-          longitude: -74.005974,
-          date: DateTime.now().add(const Duration(days: 15)),
-          imageUrl: 'assets/images/food_fest.jpg',
-          isFree: false,
-          price: 65.00,
-          restrictions: '21+ only',
-          organizerId: 'org4',
-          organizerName: 'Taste of the City',
-          category: 'Festival', // 🍷 Food Festival
-        ),
-        Event(
-          id: '5',
-          title: 'Yoga in the Park',
-          description: 'Outdoor yoga session for all skill levels',
-          location: 'Riverside Park',
-          latitude: 40.800258,
-          longitude: -73.972340,
-          date: DateTime.now().add(const Duration(days: 3)),
-          imageUrl: 'assets/images/yoga.jpg',
-          isFree: true,
-          price: 0,
-          restrictions: 'Bring your own mat',
-          organizerId: 'org5',
-          organizerName: 'Mindful Living',
-          category: 'Health & Wellness', // 🧘 Yoga Event
-        ),
-      ];
-      _filteredEvents = List.from(_events);
-    });
+  // Show a dialog to explain why location permission is needed
+  Future<void> _showLocationPermissionDialog() async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(
+            'Location Permission',
+            style: GoogleFonts.aBeeZee(
+              textStyle: const TextStyle(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          content: SingleChildScrollView(
+            child: ListBody(
+              children: <Widget>[
+                Text(
+                  'Gatherup needs location access to show you nearby events. Without location permission, you may not see all available events in your area.',
+                  style: GoogleFonts.aBeeZee(),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text(
+                'Continue without location',
+                style: GoogleFonts.aBeeZee(
+                  textStyle: const TextStyle(
+                    color: Colors.grey,
+                  ),
+                ),
+              ),
+              onPressed: () {
+                Navigator.of(context).pop();
+                setState(() {
+                  _isLocationPermissionDenied = true;
+                  _isLoading = false;
+                });
+                fetchEvents();
+              },
+            ),
+            TextButton(
+              child: Text(
+                'Grant permission',
+                style: GoogleFonts.aBeeZee(
+                  textStyle: const TextStyle(
+                    color: Color(0xFF5E43C3),
+                  ),
+                ),
+              ),
+              onPressed: () {
+                Navigator.of(context).pop();
+                _requestLocationPermission();
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
+  // Open app settings to allow the user to enable location permissions
+  Future<void> _openAppSettings() async {
+    await Geolocator.openAppSettings();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content:
+            Text('Please enable location permission in settings and come back'),
+        duration: Duration(seconds: 5),
+      ),
+    );
+  }
+
+  // Request location permission
   Future<void> _requestLocationPermission() async {
-    LocationPermission permission = await Geolocator.checkPermission();
+    setState(() {
+      _isLoading = true; // Set loading to true while requesting permission
+    });
+
+    LocationPermission permission = await Geolocator.requestPermission();
+
     if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-
-    if (permission == LocationPermission.whileInUse ||
-        permission == LocationPermission.always) {
-      _getCurrentLocation();
-    }
-  }
-
-  Future<void> _getCurrentLocation() async {
-    try {
-      Position position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high);
       setState(() {
-        _currentPosition = position;
+        _isLocationPermissionDenied = true;
+        _isLoading = false;
       });
-      if (_isLocationEnabled) {
-        _filterEventsByLocation();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+                'Location permission denied. Some features will be limited.'),
+            action: SnackBarAction(
+              label: 'Try Again',
+              onPressed: _determinePosition,
+            ),
+            duration: const Duration(seconds: 5),
+          ),
+        );
       }
-    } catch (e) {
-      print("Error getting location: $e");
-    }
-  }
+      fetchEvents();
+    } else if (permission == LocationPermission.deniedForever) {
+      setState(() {
+        _isLocationPermissionDenied = true;
+        _isLoading = false;
+      });
 
-  void _toggleLocationFilter(bool value) {
-    setState(() {
-      _isLocationEnabled = value;
-      if (value) {
-        if (_currentPosition != null) {
-          _filterEventsByLocation();
-        } else {
-          _getCurrentLocation();
-        }
-      } else {
-        _filterEventsBySearchOnly();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+                'Location permission permanently denied. Please enable in settings.'),
+            action: SnackBarAction(
+              label: 'Settings',
+              onPressed: _openAppSettings,
+            ),
+            duration: const Duration(seconds: 5),
+          ),
+        );
       }
-    });
-  }
-
-  void _filterEventsByLocation() {
-    if (_currentPosition == null) return;
-
-    setState(() {
-      _filteredEvents = _events.where((event) {
-        double distanceInKm = Geolocator.distanceBetween(
-              _currentPosition!.latitude,
-              _currentPosition!.longitude,
-              event.latitude,
-              event.longitude,
-            ) /
-            1000; // Convert to km
-
-        return distanceInKm <= _filterDistance;
-      }).toList();
-
-      // Also apply search if active
-      if (_searchQuery.isNotEmpty) {
-        _filteredEvents = _filteredEvents
-            .where((event) =>
-                event.title
-                    .toLowerCase()
-                    .contains(_searchQuery.toLowerCase()) ||
-                event.description
-                    .toLowerCase()
-                    .contains(_searchQuery.toLowerCase()))
-            .toList();
-      }
-    });
-  }
-
-  void _filterEventsBySearchOnly() {
-    setState(() {
-      if (_searchQuery.isEmpty) {
-        _filteredEvents = List.from(_events);
-      } else {
-        _filteredEvents = _events
-            .where((event) =>
-                event.title
-                    .toLowerCase()
-                    .contains(_searchQuery.toLowerCase()) ||
-                event.description
-                    .toLowerCase()
-                    .contains(_searchQuery.toLowerCase()))
-            .toList();
-      }
-    });
-  }
-
-  void _updateSearchQuery(String newQuery) {
-    setState(() {
-      _searchQuery = newQuery;
-      if (_isLocationEnabled) {
-        _filterEventsByLocation();
-      } else {
-        _filterEventsBySearchOnly();
-      }
-    });
-  }
-
-  void _onBottomNavTapped(int index) {
-    if (index == _selectedIndex) return;
-
-    if (index == 1) {
-      // Navigate to create event screen
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const CreateEventScreen()),
-      ).then((_) => setState(() => _selectedIndex = 0));
-    } else if (index == 2) {
-      // Navigate to profile screen
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const ProfileScreen()),
-      ).then((_) => setState(() => _selectedIndex = 0));
+      fetchEvents();
     } else {
+      // Permission granted, get position
+      _getCurrentPosition();
+    }
+  }
+
+  // Get current position after permission is granted
+  Future<void> _getCurrentPosition() async {
+    try {
+      // Set loading state to true
+      if (mounted) {
+        setState(() {
+          _isLoading = true;
+        });
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      if (!mounted) return;
+
       setState(() {
-        _selectedIndex = index;
+        _userPosition = position;
+        _isLocationPermissionDenied = false;
       });
+
+      // Add geocoding to get the location name
+      try {
+        List<Placemark> placemarks = await placemarkFromCoordinates(
+          position.latitude,
+          position.longitude,
+        );
+
+        if (placemarks.isNotEmpty && mounted) {
+          Placemark place = placemarks[0];
+          setState(() {
+            _currentLocation = place.locality ??
+                place.subAdministrativeArea ??
+                place.administrativeArea ??
+                "Unknown Location";
+          });
+        }
+      } catch (e) {
+        print('Error getting location name: $e');
+        // Keep the default location name if geocoding fails
+      }
+
+      fetchEvents();
+    } catch (e) {
+      print('Error getting position: $e');
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error getting location: ${e.toString()}'),
+          duration: const Duration(seconds: 5),
+        ),
+      );
+      fetchEvents();
+    }
+  }
+
+  // Get user's current position
+  Future<void> _determinePosition() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    // Check if location services are enabled
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      setState(() {
+        _isLoading = false;
+      });
+
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: const Text('Location Services Disabled'),
+              content: const Text(
+                  'Please enable location services to see nearby events.'),
+              actions: <Widget>[
+                TextButton(
+                  child: const Text('Cancel'),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    setState(() {
+                      _isLocationPermissionDenied = true;
+                    });
+                    fetchEvents();
+                  },
+                ),
+                TextButton(
+                  child: const Text('Open Settings'),
+                  onPressed: () async {
+                    Navigator.of(context).pop();
+                    await Geolocator.openLocationSettings();
+                    // Check again after returning from settings
+                    if (mounted) {
+                      _determinePosition();
+                    }
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      }
+      return;
+    }
+
+    // Check location permissions
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      // Show dialog explaining why we need location
+      _showLocationPermissionDialog();
+      return;
+    } else if (permission == LocationPermission.deniedForever) {
+      setState(() {
+        _isLocationPermissionDenied = true;
+        _isLoading = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+                'Location permissions permanently denied. Please enable them in settings.'),
+            action: SnackBarAction(
+              label: 'Settings',
+              onPressed: _openAppSettings,
+            ),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+      fetchEvents();
+      return;
+    }
+
+    // Permission is granted, get position
+    _getCurrentPosition();
+  }
+
+  // Fetch events from Firestore
+  Future<void> fetchEvents() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Get all events
+      QuerySnapshot eventSnapshot =
+          await FirebaseFirestore.instance.collection('events').get();
+
+      List<EventModel> events = [];
+
+      for (var doc in eventSnapshot.docs) {
+        EventModel event = EventModel.fromFirestore(doc);
+
+        // If user position is available and event has location, filter by distance
+        if (_userPosition != null &&
+            event.latitude != null &&
+            event.longitude != null) {
+          double distance = Geolocator.distanceBetween(
+                _userPosition!.latitude,
+                _userPosition!.longitude,
+                event.latitude!,
+                event.longitude!,
+              ) /
+              1000; // Convert to kilometers
+
+          // Only add events within the search radius
+          if (distance <= _searchRadius) {
+            events.add(event);
+          }
+        } else {
+          // If no location data available (either user or event), add it anyway
+          events.add(event);
+        }
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _events = events;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error fetching events: $e');
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error fetching events: ${e.toString()}')),
+      );
+    }
+  }
+
+  // Filter events by category
+  List<EventModel> getFilteredEvents() {
+    if (_selectedCategory == "All") {
+      return _events;
+    } else {
+      return _events
+          .where((event) => event.eventType == _selectedCategory)
+          .toList();
+    }
+  }
+
+  // Search events by name
+  List<EventModel> getSearchedEvents(List<EventModel> filteredEvents) {
+    final String searchTerm = searchController.text.toLowerCase().trim();
+    if (searchTerm.isEmpty) {
+      return filteredEvents;
+    } else {
+      return filteredEvents
+          .where((event) =>
+              event.name.toLowerCase().contains(searchTerm) ||
+              (event.description!.toLowerCase().contains(searchTerm)))
+          .toList();
+    }
+  }
+
+  // Refresh location and events
+  void _refreshLocation() {
+    if (_isLocationPermissionDenied) {
+      _determinePosition(); // This will trigger the permission flow
+    } else {
+      // Just refresh current location without triggering full permission flow
+      _getCurrentPosition();
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final filteredEvents = getFilteredEvents();
+    final searchedEvents = getSearchedEvents(filteredEvents);
+
     return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: _buildAppBar(),
+      backgroundColor: Colors.white,
       body: SafeArea(
-        child: Column(
-          children: [
-            _buildSearchBar(),
-            _buildLocationFilter(),
-            Expanded(
-              child: _buildEventsList(),
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: _buildBottomNavigationBar(),
-    );
-  }
-
-  AppBar _buildAppBar() {
-    return AppBar(
-      backgroundColor: const Color(0xFF800020),
-      elevation: 0,
-      title: Text(
-        'EventSphere',
-        style: GoogleFonts.londrinaSolid(
-          textStyle: const TextStyle(
-            fontSize: 28,
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.notifications_outlined, color: Colors.white),
-          onPressed: () {
-            // Show notifications
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSearchBar() {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
-            spreadRadius: 1,
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: TextField(
-        controller: _searchController,
-        decoration: InputDecoration(
-          hintText: 'Search events...',
-          hintStyle: GoogleFonts.londrinaSolid(
-            textStyle: TextStyle(
-              fontSize: 18,
-              color: Colors.grey[600],
-            ),
-          ),
-          prefixIcon: const Icon(Icons.search, color: Color(0xFF800020)),
-          suffixIcon: _isSearching
-              ? IconButton(
-                  icon: const Icon(Icons.clear),
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() {
-                      _isSearching = false;
-                      _searchQuery = '';
-                      _filterEventsBySearchOnly();
-                    });
-                    FocusScope.of(context).unfocus();
-                  },
-                )
-              : null,
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 15),
-        ),
-        style: GoogleFonts.londrinaSolid(
-          textStyle: const TextStyle(
-            fontSize: 18,
-            color: Colors.black87,
-          ),
-        ),
-        onChanged: (value) {
-          setState(() {
-            _isSearching = value.isNotEmpty;
-            _searchQuery = value;
-            if (_isLocationEnabled) {
-              _filterEventsByLocation();
-            } else {
-              _filterEventsBySearchOnly();
-            }
-          });
-        },
-      ),
-    );
-  }
-
-  Widget _buildLocationFilter() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-      child: Row(
-        children: [
-          Icon(
-            Icons.location_on,
-            color: const Color(0xFF800020),
-            size: 24,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'Show events nearby',
-            style: GoogleFonts.londrinaSolid(
-              textStyle: TextStyle(
-                fontSize: 18,
-                color: Colors.black87,
-              ),
-            ),
-          ),
-          const Spacer(),
-          Switch(
-            value: _isLocationEnabled,
-            onChanged: _toggleLocationFilter,
-            activeColor: const Color(0xFF800020),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEventsList() {
-    if (_filteredEvents.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.event_busy,
-              size: 70,
-              color: Colors.grey,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'No events found',
-              style: GoogleFonts.londrinaSolid(
-                textStyle: TextStyle(
-                  fontSize: 24,
-                  color: Colors.grey[700],
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _isLocationEnabled
-                  ? 'Try increasing the distance or changing your search'
-                  : 'Try a different search term',
-              style: GoogleFonts.londrinaSolid(
-                textStyle: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey[600],
-                ),
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _filteredEvents.length,
-      itemBuilder: (context, index) {
-        final event = _filteredEvents[index];
-        return _buildEventCard(event);
-      },
-    );
-  }
-
-  Widget _buildEventCard(Event event) {
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => EventDetailScreen(event: event),
-          ),
-        );
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.3),
-              spreadRadius: 1,
-              blurRadius: 6,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Event Image with Overlay
-            ClipRRect(
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(20),
-                topRight: Radius.circular(20),
-              ),
-              child: Stack(
+            // App Bar with Logo and Location
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Image.asset(
-                    'assets/images/event_placeholder.jpg', // Fallback to placeholder
-                    width: double.infinity,
-                    height: 150,
-                    fit: BoxFit.cover,
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 8,
-                        horizontal: 16,
-                      ),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black.withOpacity(0.7),
-                          ],
-                        ),
-                      ),
-                      child: Text(
-                        event.title,
-                        style: GoogleFonts.londrinaSolid(
-                          textStyle: const TextStyle(
-                            fontSize: 22,
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                  // Logo
+                  Text(
+                    'Gatherup',
+                    style: GoogleFonts.lobsterTwo(
+                      textStyle: const TextStyle(
+                        fontSize: 32,
+                        color: Color(0xFF5E43C3),
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
-                  Positioned(
-                    top: 10,
-                    right: 10,
+                  // Location
+                  InkWell(
+                    onTap: _refreshLocation,
+                    borderRadius: BorderRadius.circular(30),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
+                          horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: event.isFree
-                            ? Colors.green
-                            : const Color(0xFF800020),
-                        borderRadius: BorderRadius.circular(20),
+                        color: _isLocationPermissionDenied
+                            ? Colors.red.withOpacity(0.1)
+                            : Colors.purple.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(30),
                       ),
-                      child: Text(
-                        event.isFree
-                            ? 'FREE'
-                            : '\$${event.price.toStringAsFixed(2)}',
-                        style: GoogleFonts.londrinaSolid(
-                          textStyle: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
+                      child: Row(
+                        children: [
+                          Icon(
+                            _isLocationPermissionDenied
+                                ? Icons.location_disabled
+                                : Icons.location_on,
+                            size: 20,
+                            color: _isLocationPermissionDenied
+                                ? Colors.red
+                                : const Color(0xFF5E43C3),
                           ),
-                        ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _currentLocation,
+                            style: GoogleFonts.aBeeZee(
+                              textStyle: TextStyle(
+                                fontSize: 14,
+                                color: _isLocationPermissionDenied
+                                    ? Colors.red
+                                    : Colors.black,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          Icon(
+                            Icons.refresh,
+                            size: 14,
+                            color: _isLocationPermissionDenied
+                                ? Colors.red
+                                : const Color(0xFF5E43C3),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-            // Event Details
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.calendar_today,
-                        size: 18,
-                        color: Color(0xFF800020),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${event.date.day}/${event.date.month}/${event.date.year}',
-                        style: GoogleFonts.londrinaSolid(
-                          textStyle: TextStyle(
-                            fontSize: 16,
-                            color: Colors.grey[800],
+
+            // Location permission banner when denied
+            if (_isLocationPermissionDenied)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.red.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, color: Colors.red, size: 24),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Location permission is required to see nearby events. Some events may not be shown.',
+                        style: GoogleFonts.aBeeZee(
+                          textStyle: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.red,
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.location_on,
-                        size: 18,
-                        color: Color(0xFF800020),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          event.location,
-                          style: GoogleFonts.londrinaSolid(
-                            textStyle: TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey[800],
-                            ),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          event.description,
-                          style: GoogleFonts.londrinaSolid(
-                            textStyle: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  EventDetailScreen(event: event),
-                            ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF800020),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                        ),
-                        child: Text(
-                          'Details',
-                          style: GoogleFonts.londrinaSolid(
-                            textStyle: const TextStyle(
-                              fontSize: 16,
-                              color: Colors.white,
-                            ),
+                    ),
+                    TextButton(
+                      onPressed: _determinePosition,
+                      child: Text(
+                        'Enable',
+                        style: GoogleFonts.aBeeZee(
+                          textStyle: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.red,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
+
+            // Search Bar
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: TextField(
+                controller: searchController,
+                decoration: InputDecoration(
+                  hintText: 'Search Events...',
+                  hintStyle: GoogleFonts.aBeeZee(
+                    textStyle: const TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey,
+                    ),
+                  ),
+                  prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                  filled: true,
+                  fillColor: const Color(
+                      0xFFF1F0F5), // Background color inside input box
+                  border: OutlineInputBorder(
+                    borderRadius:
+                        BorderRadius.circular(70), // Rounded input box
+                    borderSide: BorderSide.none, // No border color
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(70),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(70),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+                onChanged: (value) {
+                  setState(() {});
+                },
+              ),
+            ),
+
+            // Category Filters
+            SizedBox(
+              height: 50,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: _categories.length,
+                padding: const EdgeInsets.symmetric(horizontal: 15),
+                itemBuilder: (context, index) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    child: ChoiceChip(
+                      label: Text(_categories[index]),
+                      selected: _selectedCategory == _categories[index],
+                      onSelected: (selected) {
+                        if (selected) {
+                          setState(() {
+                            _selectedCategory = _categories[index];
+                          });
+                        }
+                      },
+                      backgroundColor: Colors.grey[200],
+                      selectedColor: const Color(0xFF5E43C3),
+                      labelStyle: TextStyle(
+                        color: _selectedCategory == _categories[index]
+                            ? Colors.white
+                            : Colors.black,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+
+            // Events List
+            Expanded(
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                      color: Color(0xFF5E43C3),
+                    ))
+                  : searchedEvents.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.event_busy,
+                                size: 70,
+                                color: Colors.grey,
+                              ),
+                              const SizedBox(height: 20),
+                              Text(
+                                'No events found',
+                                style: GoogleFonts.aBeeZee(
+                                  textStyle: const TextStyle(
+                                    fontSize: 18,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                _isLocationPermissionDenied
+                                    ? 'Enable location to see more events'
+                                    : 'Try changing filters or be the first to create one!',
+                                style: GoogleFonts.aBeeZee(
+                                  textStyle: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              // REDUCED BUTTON SIZE HERE
+                              ElevatedButton(
+                                onPressed: _refreshLocation,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF5E43C3),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 8),
+                                  minimumSize: const Size(120, 36),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                        _isLocationPermissionDenied
+                                            ? Icons.location_on
+                                            : Icons.refresh,
+                                        color: Colors.white,
+                                        size: 16),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      _isLocationPermissionDenied
+                                          ? 'Enable Location'
+                                          : 'Refresh',
+                                      style: GoogleFonts.aBeeZee(
+                                        textStyle: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: searchedEvents.length,
+                          padding: const EdgeInsets.all(20),
+                          itemBuilder: (context, index) {
+                            return EventCard(event: searchedEvents[index]);
+                          },
+                        ),
             ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildBottomNavigationBar() {
-    return Container(
-      decoration: BoxDecoration(
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.3),
-            spreadRadius: 1,
-            blurRadius: 5,
-            offset: const Offset(0, -3),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _selectedIndex,
-          onTap: _onBottomNavTapped,
-          backgroundColor: Colors.white,
-          selectedItemColor: const Color(0xFF800020),
-          unselectedItemColor: Colors.grey[600],
-          selectedLabelStyle: GoogleFonts.londrinaSolid(
-            textStyle: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          unselectedLabelStyle: GoogleFonts.londrinaSolid(
-            textStyle: const TextStyle(
-              fontSize: 14,
-            ),
-          ),
-          items: [
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.home),
-              label: 'Home',
-            ),
-            BottomNavigationBarItem(
-              icon: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF800020),
-                  shape: BoxShape.circle,
+      bottomNavigationBar: Container(
+        // Added a container to wrap the BottomAppBar and ensure it extends beyond bottom
+        color: Colors.white, // Added white background below bottom navigation
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            BottomAppBar(
+              elevation: 0,
+              child: Container(
+                height: 60,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF2F2F2),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
                 ),
-                padding: const EdgeInsets.all(10),
-                child: const Icon(Icons.add, color: Colors.white),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.home, size: 30),
+                      color: const Color(0xFF5E43C3),
+                      onPressed: () {
+                        // Already on home page
+                      },
+                    ),
+                    FloatingActionButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const CreateEventScreen(),
+                          ),
+                        ).then((_) =>
+                            fetchEvents()); // Refresh events after returning
+                      },
+                      backgroundColor: const Color(0xFF5E43C3),
+                      child:
+                          const Icon(Icons.add, color: Colors.white, size: 30),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.person, size: 30),
+                      color: Colors.black,
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const ProfileScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
-              label: 'Create',
             ),
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.person),
-              label: 'Profile',
-            ),
+            // This container ensures white background extends below the navigation bar
+            Container(
+              height: MediaQuery.of(context).padding.bottom,
+              color: Colors.white,
+            )
           ],
         ),
       ),

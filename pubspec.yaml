@@ -52,10 +52,21 @@ dependencies:
   image_picker: ^1.1.2
   firebase_storage: ^12.4.4
   uuid: ^4.5.1
+  google_maps_flutter: ^2.10.1
+  maps_launcher: ^3.0.0+1
+  geocoding: ^3.0.0
+  flutter_launcher_icons: ^0.14.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/icons/gatherup-icon.png" # Your icon PNG (no background)
+  adaptive_icon_foreground: "assets/icons/gatherup-icon.png" # Foreground (your logo)
+  adaptive_icon_background: "#CC5E43C3" # 80% opacity
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
