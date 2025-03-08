@@ -501,7 +501,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
           ),
 
           // Tags
-          if (widget.event.tags != null && widget.event.tags!.isNotEmpty)
+          if (widget.event.tags.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 24, bottom: 16),
               child: Text(
@@ -515,11 +515,11 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                 ),
               ),
             ),
-          if (widget.event.tags != null && widget.event.tags!.isNotEmpty)
+          if (widget.event.tags.isNotEmpty)
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: widget.event.tags!.map((tag) {
+              children: widget.event.tags.map((tag) {
                 return Chip(
                   label: Text(tag),
                   backgroundColor: const Color(0xFF800020).withOpacity(0.1),

@@ -400,7 +400,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return filteredEvents
           .where((event) =>
               event.name.toLowerCase().contains(searchTerm) ||
-              (event.description!.toLowerCase().contains(searchTerm)))
+              (event.description.toLowerCase().contains(searchTerm)))
           .toList();
     }
   }
