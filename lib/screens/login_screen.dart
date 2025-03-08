@@ -54,22 +54,36 @@ class _LoginScreenState extends State<LoginScreen>
     });
 
     try {
-      // Sign in with email and password
-      UserCredential userCredential =
+      // First check if the email is verified by fetching the user
+      // WITHOUT setting the persistence to prevent auto-login behaviors
+      UserCredential tempCredential =
           await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
-      // Check if email is verified
-      User? user = userCredential.user;
-      if (user != null && !user.emailVerified) {
-        // Email not verified, send verification email again
-        await user.sendEmailVerification();
+      User? user = tempCredential.user;
+      if (user != null) {
+        // Reload user to get the latest emailVerified status
+        await user.reload();
+        user = FirebaseAuth.instance.currentUser;
 
-        // Sign out the user since we don't want unverified users to be logged in
-        await FirebaseAuth.instance.signOut();
+        if (user != null && !user.emailVerified) {
+          // Email not verified, sign out and show message
+          await FirebaseAuth.instance.signOut();
 
+          setState(() {
+            _isLoading = false;
+          });
+
+          if (mounted) {
+            showVerificationDialog(context, user.email ?? "");
+          }
+          return;
+        }
+
+        // If email is verified, only now allow the AuthWrapper to handle navigation
+        // The user is already logged in, so we just update the UI state
         setState(() {
           _isLoading = false;
         });
@@ -77,15 +91,11 @@ class _LoginScreenState extends State<LoginScreen>
         if (mounted) {
           showCustomSnackBar(
             context,
-            'Please verify your email before logging in. A new verification email has been sent.',
-            isError: true,
+            'Login successful!',
+            isError: false,
           );
         }
-        return;
       }
-
-      // If we get here, the email is verified
-      // Navigation will be handled by the AuthWrapper in main.dart
     } on FirebaseAuthException catch (e) {
       setState(() {
         _isLoading = false;
@@ -114,6 +124,138 @@ class _LoginScreenState extends State<LoginScreen>
         showCustomSnackBar(
           context,
           'An unexpected error occurred. Please try again.',
+          isError: true,
+        );
+      }
+    }
+  }
+
+  // Show verification dialog with option to resend verification email
+  void showVerificationDialog(BuildContext context, String email) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Text(
+            'Email Verification Required',
+            style: GoogleFonts.londrinaSolid(
+              textStyle: const TextStyle(
+                fontSize: 20,
+                color: Color(0xFF5E43C3),
+              ),
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'You need to verify your email before logging in. Please check your inbox for a verification link.',
+                style: GoogleFonts.akatab(
+                  textStyle: const TextStyle(
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Email: $email',
+                style: GoogleFonts.akatab(
+                  textStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text(
+                'OK',
+                style: GoogleFonts.akatab(
+                  textStyle: const TextStyle(
+                    color: Color(0xFF5E43C3),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _resendVerificationEmail();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF5E43C3),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: Text(
+                'Resend Email',
+                style: GoogleFonts.akatab(
+                  textStyle: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Resend verification email function
+  Future<void> _resendVerificationEmail() async {
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+
+      // Try to sign in first to get the user
+      UserCredential userCredential =
+          await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
+
+      User? user = userCredential.user;
+      if (user != null) {
+        await user.sendEmailVerification();
+        // Sign out since we don't want unverified users to be logged in
+        await FirebaseAuth.instance.signOut();
+      }
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      if (mounted) {
+        showCustomSnackBar(
+          context,
+          'Verification email sent. Please check your inbox.',
+          isError: false,
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+
+      if (mounted) {
+        showCustomSnackBar(
+          context,
+          'Failed to send verification email. Please try again.',
           isError: true,
         );
       }
@@ -435,15 +577,23 @@ class _LoginScreenState extends State<LoginScreen>
                                   ),
 
                                   // Email verification help text
-                                  const SizedBox(height: 1),
-                                  Text(
-                                    'Please verify your email after signup to enable login.',
-                                    textAlign: TextAlign.center,
-                                    style: GoogleFonts.akatab(
-                                      textStyle: const TextStyle(
-                                        fontSize: 13,
-                                        color: Colors.black54,
-                                        fontStyle: FontStyle.italic,
+                                  const SizedBox(height: 5),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 20, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[100],
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      '⚠️ You must verify your email before logging in. Check your inbox for the verification link after signup.',
+                                      textAlign: TextAlign.center,
+                                      style: GoogleFonts.akatab(
+                                        textStyle: const TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.black87,
+                                          fontStyle: FontStyle.italic,
+                                        ),
                                       ),
                                     ),
                                   ),

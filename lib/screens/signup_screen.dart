@@ -78,13 +78,25 @@ class _SignupScreenState extends State<SignupScreen>
       // Send email verification
       await userCredential.user?.sendEmailVerification();
 
+      // Sign out the user to force them to verify and log in
+      // Don't sign them out here - let AuthWrapper handle this
+      // await FirebaseAuth.instance.signOut(); - REMOVED THIS LINE
+
       if (mounted) {
-        Navigator.pop(context); // Return to login screen
+        // Show verification message BEFORE navigation
         showCustomSnackBar(
           context,
-          'Account created successfully! Please verify your email.',
+          'Account created successfully! Please check your email to verify your account before logging in.',
           isError: false,
         );
+
+        // Add a small delay to allow the snackbar to appear
+        Future.delayed(const Duration(milliseconds: 800), () {
+          if (mounted) {
+            // Use pushReplacementNamed instead of pop for cleaner navigation
+            Navigator.pushReplacementNamed(context, '/login');
+          }
+        });
       }
     } on FirebaseAuthException catch (e) {
       setState(() {
@@ -163,7 +175,7 @@ class _SignupScreenState extends State<SignupScreen>
                   ),
                 ),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 10),
 
                 // Logo Space
                 Container(
@@ -175,7 +187,7 @@ class _SignupScreenState extends State<SignupScreen>
                   ),
                 ),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 10),
 
                 // White form container - Now using Expanded to fill remaining space
                 Expanded(
@@ -524,5 +536,3 @@ class _SignupScreenState extends State<SignupScreen>
     );
   }
 }
-
-// The custom SnackBar function is shared across screens from the login screen

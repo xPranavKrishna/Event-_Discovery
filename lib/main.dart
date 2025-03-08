@@ -5,7 +5,9 @@ import 'package:event_lister/screens/login_screen.dart';
 import 'package:event_lister/screens/home_screen.dart';
 import 'package:event_lister/screens/splash_screen.dart';
 import 'package:event_lister/theme/app_theme.dart';
-import 'package:event_lister/screens/help_support_screen.dart';
+
+// Global navigator key for accessing navigation from anywhere
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,9 +49,35 @@ class AuthWrapper extends StatelessWidget {
           return const SplashScreen();
         }
 
-        // User is logged in
-        if (snapshot.hasData) {
-          return HomeScreen();
+        // Check if we have a user
+        if (snapshot.hasData && snapshot.data != null) {
+          // Get the current user
+          User user = snapshot.data!;
+
+          // Check if email is verified
+          if (user.emailVerified) {
+            // User is authenticated and verified, show home page
+            return HomeScreen();
+          } else {
+            // User is authenticated but NOT verified
+            // Show login screen with a message about verification
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              // This ensures the scaffold is built before showing the snackbar
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                      'Please verify your email address before logging in.'),
+                  backgroundColor: Colors.orange,
+                  duration: Duration(seconds: 5),
+                ),
+              );
+
+              // Then sign them out
+              FirebaseAuth.instance.signOut();
+            });
+
+            return const LoginScreen();
+          }
         }
 
         // User is not logged in
