@@ -701,8 +701,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       bottomNavigationBar: Container(
-        // Added a container to wrap the BottomAppBar and ensure it extends beyond bottom
-        color: Colors.white, // Added white background below bottom navigation
+        // Updated container with the matching background color
+        color: const Color(0xFFF2F2F2),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -757,10 +757,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-            // This container ensures white background extends below the navigation bar
+            // This container ensures background extends below the navigation bar
+            // Updated the color to match the bottom navigation color
             Container(
               height: MediaQuery.of(context).padding.bottom,
-              color: Colors.white,
+              color: const Color(0xFFF2F2F2),
             )
           ],
         ),

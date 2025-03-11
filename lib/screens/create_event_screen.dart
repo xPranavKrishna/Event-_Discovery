@@ -7,8 +7,10 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart'; // Add this import for reverse geocoding
 import 'package:event_lister/models/event_model.dart';
 import 'package:uuid/uuid.dart';
+import 'package:event_lister/theme/app_theme.dart';
 
 class CreateEventScreen extends StatefulWidget {
   const CreateEventScreen({Key? key}) : super(key: key);
@@ -66,7 +68,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     'General',
     'Adults',
     'Children',
-    'Seniors',
+    'Students',
     'Professional'
   ];
 
@@ -112,16 +114,90 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     });
 
     try {
+      // Request permission
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permissions are denied')),
+          );
+          setState(() {
+            _isLoading = false;
+          });
+          return;
+        }
+      }
+
       Position position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high);
+
       setState(() {
         _latitude = position.latitude;
         _longitude = position.longitude;
-        _locationController.text = "Current Location Selected";
-        _isLoading = false;
       });
+
+      // Use reverse geocoding to get address from coordinates
+      try {
+        List<Placemark> placemarks = await placemarkFromCoordinates(
+            position.latitude, position.longitude);
+
+        if (placemarks.isNotEmpty) {
+          Placemark place = placemarks[0];
+          // Format address with available components
+          String address = '';
+
+          if (place.street != null && place.street!.isNotEmpty) {
+            address += place.street!;
+          }
+
+          if (place.locality != null && place.locality!.isNotEmpty) {
+            if (address.isNotEmpty) address += ', ';
+            address += place.locality!;
+          }
+
+          if (place.subAdministrativeArea != null &&
+              place.subAdministrativeArea!.isNotEmpty) {
+            if (address.isNotEmpty) address += ', ';
+            address += place.subAdministrativeArea!;
+          }
+
+          if (place.administrativeArea != null &&
+              place.administrativeArea!.isNotEmpty) {
+            if (address.isNotEmpty) address += ', ';
+            address += place.administrativeArea!;
+          }
+
+          if (place.postalCode != null && place.postalCode!.isNotEmpty) {
+            if (address.isNotEmpty) address += ' ';
+            address += place.postalCode!;
+          }
+
+          setState(() {
+            _locationController.text =
+                address.isNotEmpty ? address : "Current Location";
+            _isLoading = false;
+          });
+        } else {
+          setState(() {
+            _locationController.text =
+                "Location Found (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})";
+            _isLoading = false;
+          });
+        }
+      } catch (e) {
+        print("Error getting place name: $e");
+        setState(() {
+          _locationController.text =
+              "Location Found (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})";
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       print("Error getting location: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error getting location: $e')),
+      );
       setState(() {
         _isLoading = false;
       });
@@ -215,13 +291,15 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white, // Explicitly set to white
       appBar: AppBar(
         title: Text(
           'Create Event',
-          style: GoogleFonts.aBeeZee(
+          style: GoogleFonts.londrinaSolid(
             textStyle: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.bold,
+              color: Colors.black,
             ),
           ),
         ),
@@ -230,7 +308,10 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         iconTheme: const IconThemeData(color: Colors.black),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: CircularProgressIndicator(
+              color: AppTheme.primaryColor,
+            ))
           : Form(
               key: _formKey,
               child: SingleChildScrollView(
@@ -261,10 +342,23 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                                 ),
                               )
                             : Center(
-                                child: Icon(
-                                  Icons.add_circle_outline,
-                                  size: 50,
-                                  color: Colors.grey[600],
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.add_photo_alternate,
+                                      size: 50,
+                                      color: Colors.grey[600],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      'Add Event Image',
+                                      style: GoogleFonts.aBeeZee(
+                                        color: Colors.grey[800],
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                       ),
@@ -276,12 +370,18 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                       controller: _nameController,
                       decoration: InputDecoration(
                         hintText: 'Name of event',
+                        hintStyle: GoogleFonts.aBeeZee(
+                          color: Colors.grey[600],
+                        ),
                         filled: true,
                         fillColor: Colors.grey[200],
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(30),
                           borderSide: BorderSide.none,
                         ),
+                      ),
+                      style: GoogleFonts.aBeeZee(
+                        color: Colors.black,
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
@@ -297,12 +397,18 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                       controller: _descriptionController,
                       decoration: InputDecoration(
                         hintText: 'Event Description',
+                        hintStyle: GoogleFonts.aBeeZee(
+                          color: Colors.grey[600],
+                        ),
                         filled: true,
                         fillColor: Colors.grey[200],
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(20),
                           borderSide: BorderSide.none,
                         ),
+                      ),
+                      style: GoogleFonts.aBeeZee(
+                        color: Colors.black,
                       ),
                       maxLines: 5,
                       validator: (value) {
@@ -325,6 +431,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                         textStyle: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
+                          color: Colors.black,
                         ),
                       ),
                     ),
@@ -343,7 +450,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                                   }
                                 },
                                 backgroundColor: Colors.grey[200],
-                                selectedColor: const Color(0xFF5E43C3),
+                                selectedColor: AppTheme.primaryColor,
                                 labelStyle: TextStyle(
                                   color: _eventType == type
                                       ? Colors.white
@@ -361,6 +468,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                         textStyle: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
+                          color: Colors.black,
                         ),
                       ),
                     ),
@@ -379,7 +487,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                                   }
                                 },
                                 backgroundColor: Colors.grey[200],
-                                selectedColor: const Color(0xFF5E43C3),
+                                selectedColor: AppTheme.primaryColor,
                                 labelStyle: TextStyle(
                                   color: _eventSize == size
                                       ? Colors.white
@@ -397,6 +505,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                         textStyle: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
+                          color: Colors.black,
                         ),
                       ),
                     ),
@@ -415,7 +524,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                                   }
                                 },
                                 backgroundColor: Colors.grey[200],
-                                selectedColor: const Color(0xFF5E43C3),
+                                selectedColor: AppTheme.primaryColor,
                                 labelStyle: TextStyle(
                                   color: _eventDuration == duration
                                       ? Colors.white
@@ -475,6 +584,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                             controller: _locationController,
                             decoration: InputDecoration(
                               hintText: 'Event Location',
+                              hintStyle: GoogleFonts.aBeeZee(
+                                color: Colors.grey[600],
+                              ),
                               filled: true,
                               fillColor: Colors.grey[200],
                               border: OutlineInputBorder(
@@ -482,9 +594,15 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                                 borderSide: BorderSide.none,
                               ),
                               suffixIcon: IconButton(
-                                icon: const Icon(Icons.my_location),
+                                icon: const Icon(
+                                  Icons.my_location,
+                                  color: AppTheme.primaryColor,
+                                ),
                                 onPressed: _getCurrentLocation,
                               ),
+                            ),
+                            style: GoogleFonts.aBeeZee(
+                              color: Colors.black,
                             ),
                             validator: (value) {
                               if (value == null || value.isEmpty) {
@@ -503,12 +621,18 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                       controller: _locationLinkController,
                       decoration: InputDecoration(
                         hintText: 'Location Link',
+                        hintStyle: GoogleFonts.aBeeZee(
+                          color: Colors.grey[600],
+                        ),
                         filled: true,
                         fillColor: Colors.grey[200],
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(30),
                           borderSide: BorderSide.none,
                         ),
+                      ),
+                      style: GoogleFonts.aBeeZee(
+                        color: Colors.black,
                       ),
                     ),
                     const SizedBox(height: 30),
@@ -528,6 +652,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                             textStyle: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
+                              color: Colors.black,
                             ),
                           ),
                         ),
@@ -538,7 +663,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                               _requiresRegistration = value;
                             });
                           },
-                          activeColor: const Color(0xFF5E43C3),
+                          activeColor: AppTheme.primaryColor,
                         ),
                       ],
                     ),
@@ -551,6 +676,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                         textStyle: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
+                          color: Colors.black,
                         ),
                       ),
                     ),
@@ -571,7 +697,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                                   });
                                 },
                                 backgroundColor: Colors.grey[200],
-                                selectedColor: const Color(0xFF5E43C3),
+                                selectedColor: AppTheme.primaryColor,
                                 labelStyle: TextStyle(
                                   color: _targetAudience.contains(audience)
                                       ? Colors.white
@@ -589,6 +715,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                         textStyle: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
+                          color: Colors.black,
                         ),
                       ),
                     ),
@@ -603,12 +730,15 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                               _isFree = value!;
                             });
                           },
-                          activeColor: const Color(0xFF5E43C3),
+                          activeColor: AppTheme.primaryColor,
                         ),
                         Text(
                           'Free',
                           style: GoogleFonts.aBeeZee(
-                            textStyle: const TextStyle(fontSize: 16),
+                            textStyle: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.black,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 30),
@@ -620,12 +750,15 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                               _isFree = value!;
                             });
                           },
-                          activeColor: const Color(0xFF5E43C3),
+                          activeColor: AppTheme.primaryColor,
                         ),
                         Text(
                           'Paid',
                           style: GoogleFonts.aBeeZee(
-                            textStyle: const TextStyle(fontSize: 16),
+                            textStyle: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.black,
+                            ),
                           ),
                         ),
                       ],
@@ -636,13 +769,22 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                         controller: _costController,
                         decoration: InputDecoration(
                           hintText: 'Cost',
+                          hintStyle: GoogleFonts.aBeeZee(
+                            color: Colors.grey[600],
+                          ),
                           filled: true,
                           fillColor: Colors.grey[200],
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(30),
                             borderSide: BorderSide.none,
                           ),
-                          prefixIcon: const Icon(Icons.attach_money),
+                          prefixIcon: const Icon(
+                            Icons.attach_money,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        style: GoogleFonts.aBeeZee(
+                          color: Colors.black,
                         ),
                         keyboardType: TextInputType.number,
                         validator: (value) {
@@ -661,17 +803,19 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                       child: ElevatedButton(
                         onPressed: _saveEvent,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF5E43C3),
+                          backgroundColor: AppTheme.primaryColor,
+                          foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(30),
                           ),
                         ),
                         child: Text(
                           'Create Event',
-                          style: GoogleFonts.aBeeZee(
+                          style: GoogleFonts.londrinaSolid(
                             textStyle: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
+                              color: Colors.white,
                             ),
                           ),
                         ),
@@ -701,6 +845,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 textStyle: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
+                  color: Colors.black,
                 ),
               ),
             ),
@@ -709,10 +854,11 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         const SizedBox(width: 10),
         Text(
           title,
-          style: GoogleFonts.aBeeZee(
+          style: GoogleFonts.londrinaSolid(
             textStyle: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
+              color: Colors.black,
             ),
           ),
         ),

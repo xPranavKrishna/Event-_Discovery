@@ -586,7 +586,7 @@ class _LoginScreenState extends State<LoginScreen>
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: Text(
-                                      '⚠️ You must verify your email before logging in. Check your inbox for the verification link after signup.',
+                                      '⚠️ You must verify your email before logging in.',
                                       textAlign: TextAlign.center,
                                       style: GoogleFonts.akatab(
                                         textStyle: const TextStyle(

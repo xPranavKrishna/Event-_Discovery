@@ -13,12 +13,14 @@ class EventDetailsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       body: CustomScrollView(
         slivers: [
           // App Bar with Image
           SliverAppBar(
             expandedHeight: 250,
             pinned: true,
+            backgroundColor: const Color(0xFF5E43C3),
             flexibleSpace: FlexibleSpaceBar(
               background: event.imageUrl != null && event.imageUrl!.isNotEmpty
                   ? Image.network(
@@ -148,9 +150,9 @@ class EventDetailsScreen extends StatelessWidget {
                   Text(
                     event.description,
                     style: GoogleFonts.aBeeZee(
-                      textStyle: TextStyle(
+                      textStyle: const TextStyle(
                         fontSize: 16,
-                        color: Colors.grey[800],
+                        color: Color(0xFF666666),
                         height: 1.5,
                       ),
                     ),
@@ -162,9 +164,9 @@ class EventDetailsScreen extends StatelessWidget {
                   Text(
                     'Posted on ${DateFormat('MMM dd, yyyy').format(event.createdAt)}',
                     style: GoogleFonts.aBeeZee(
-                      textStyle: TextStyle(
+                      textStyle: const TextStyle(
                         fontSize: 14,
-                        color: Colors.grey[600],
+                        color: Color(0xFF999999),
                         fontStyle: FontStyle.italic,
                       ),
                     ),
@@ -260,9 +262,9 @@ class EventDetailsScreen extends StatelessWidget {
               Text(
                 title,
                 style: GoogleFonts.aBeeZee(
-                  textStyle: TextStyle(
+                  textStyle: const TextStyle(
                     fontSize: 14,
-                    color: Colors.grey[600],
+                    color: Color(0xFF999999),
                   ),
                 ),
               ),
@@ -272,7 +274,7 @@ class EventDetailsScreen extends StatelessWidget {
                 style: GoogleFonts.aBeeZee(
                   textStyle: const TextStyle(
                     fontSize: 16,
-                    color: Colors.black87,
+                    color: Color(0xFF333333),
                   ),
                 ),
               ),
@@ -316,9 +318,9 @@ class EventDetailsScreen extends StatelessWidget {
                   Text(
                     'Location',
                     style: GoogleFonts.aBeeZee(
-                      textStyle: TextStyle(
+                      textStyle: const TextStyle(
                         fontSize: 14,
-                        color: Colors.grey[600],
+                        color: Color(0xFF999999),
                       ),
                     ),
                   ),
@@ -328,7 +330,7 @@ class EventDetailsScreen extends StatelessWidget {
                     style: GoogleFonts.aBeeZee(
                       textStyle: const TextStyle(
                         fontSize: 16,
-                        color: Colors.black87,
+                        color: Color(0xFF333333),
                       ),
                     ),
                   ),
@@ -405,9 +407,9 @@ class EventDetailsScreen extends StatelessWidget {
             Text(
               'Registration',
               style: GoogleFonts.aBeeZee(
-                textStyle: TextStyle(
+                textStyle: const TextStyle(
                   fontSize: 14,
-                  color: Colors.grey[600],
+                  color: Color(0xFF999999),
                 ),
               ),
             ),
@@ -417,7 +419,7 @@ class EventDetailsScreen extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.grey[100],
+            color: const Color(0xFFF5F5F5),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Row(
@@ -438,6 +440,7 @@ class EventDetailsScreen extends StatelessWidget {
                   style: GoogleFonts.aBeeZee(
                     textStyle: const TextStyle(
                       fontSize: 14,
+                      color: Color(0xFF333333),
                     ),
                   ),
                 ),
@@ -464,9 +467,9 @@ class EventDetailsScreen extends StatelessWidget {
             Text(
               'Target Audience',
               style: GoogleFonts.aBeeZee(
-                textStyle: TextStyle(
+                textStyle: const TextStyle(
                   fontSize: 14,
-                  color: Colors.grey[600],
+                  color: Color(0xFF999999),
                 ),
               ),
             ),
@@ -480,15 +483,15 @@ class EventDetailsScreen extends StatelessWidget {
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: Colors.grey[200],
+                color: const Color(0xFFEEEEEE),
                 borderRadius: BorderRadius.circular(15),
               ),
               child: Text(
                 audience,
                 style: GoogleFonts.aBeeZee(
-                  textStyle: TextStyle(
+                  textStyle: const TextStyle(
                     fontSize: 12,
-                    color: Colors.grey[800],
+                    color: Color(0xFF555555),
                   ),
                 ),
               ),
