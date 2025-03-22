@@ -53,6 +53,8 @@ class AuthWrapper extends StatelessWidget {
         if (snapshot.hasData && snapshot.data != null) {
           // Get the current user
           User user = snapshot.data!;
+          print("Auth state changed: User logged in with ID: ${user.uid}");
+          print("Email verified status: ${user.emailVerified}");
 
           // Check if email is verified
           if (user.emailVerified) {
@@ -62,18 +64,63 @@ class AuthWrapper extends StatelessWidget {
             // User is authenticated but NOT verified
             // Show login screen with a message about verification
             WidgetsBinding.instance.addPostFrameCallback((_) {
+              // Sign them out first
+              FirebaseAuth.instance.signOut();
+              print("Signed out non-verified user");
+
               // This ensures the scaffold is built before showing the snackbar
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(
-                      'Please verify your email address before logging in.'),
+                  content: const Text(
+                    'Please check your email and click the verification link before logging in',
+                  ),
                   backgroundColor: Colors.orange,
-                  duration: Duration(seconds: 5),
+                  duration: const Duration(seconds: 5),
+                  action: SnackBarAction(
+                    label: 'RESEND',
+                    textColor: Colors.white,
+                    onPressed: () async {
+                      try {
+                        // Try to reload the user first to get fresh state
+                        await user.reload();
+                        User? refreshedUser = FirebaseAuth.instance.currentUser;
+
+                        // Check if user is still available after reload
+                        if (refreshedUser != null) {
+                          await refreshedUser.sendEmailVerification();
+                          print(
+                              "Verification email resent to: ${refreshedUser.email}");
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                  'Verification email resent. Please check your inbox.'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        } else {
+                          // User is no longer available (likely signed out)
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                  'Please sign in again to resend verification'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        print("Error resending verification email: $e");
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Failed to resend: ${e.toString()}'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    },
+                  ),
                 ),
               );
-
-              // Then sign them out
-              FirebaseAuth.instance.signOut();
             });
 
             return const LoginScreen();
@@ -81,6 +128,7 @@ class AuthWrapper extends StatelessWidget {
         }
 
         // User is not logged in
+        print("Auth state: No user logged in");
         return const LoginScreen();
       },
     );

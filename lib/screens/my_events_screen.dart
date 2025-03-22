@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:event_lister/theme/app_theme.dart';
-import 'package:event_lister/models/event.dart';
-import 'package:event_lister/screens/event_detail_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:event_lister/models/event_model.dart';
+import 'package:event_lister/screens/event_details_screen.dart';
+import 'package:event_lister/screens/edit_event_screen.dart';
 
 class MyEventsScreen extends StatefulWidget {
   final bool hostedOnly;
@@ -22,8 +23,8 @@ class _MyEventsScreenState extends State<MyEventsScreen>
   late TabController _tabController;
   bool _isLoading = true;
   final User? _currentUser = FirebaseAuth.instance.currentUser;
-  List<Event> _interestedEvents = [];
-  List<Event> _hostedEvents = [];
+  List<EventModel> _interestedEvents = [];
+  List<EventModel> _hostedEvents = [];
 
   @override
   void initState() {
@@ -43,114 +44,64 @@ class _MyEventsScreenState extends State<MyEventsScreen>
   }
 
   Future<void> _loadEvents() async {
-    // Simulate loading delay
-    await Future.delayed(const Duration(milliseconds: 800));
-
-    // In a real app, fetch from Firebase
-    // This is just mock data
     setState(() {
-      _interestedEvents = [
-        Event(
-          id: '1',
-          title: 'Tech Conference 2025',
-          description:
-              'The biggest tech event of the year with keynotes from industry leaders',
-          location: 'Convention Center',
-          latitude: 40.712776,
-          longitude: -74.005974,
-          date: DateTime.now().add(const Duration(days: 15)),
-          imageUrl: 'assets/images/tech_conf.jpg',
-          isFree: false,
-          price: 49.99,
-          restrictions: 'Registration required',
-          organizerId: 'org1',
-          organizerName: 'Tech Events Inc.',
-          category: 'Conference',
-          attendeeCount: 352,
-          tags: ['Tech', 'Networking', 'Innovation'],
-          isInterested: true,
-        ),
-        Event(
-          id: '2',
-          title: 'Jazz in the Park',
-          description: 'An evening of smooth jazz under the stars',
-          location: 'Central Park',
-          latitude: 40.785091,
-          longitude: -73.968285,
-          date: DateTime.now().add(const Duration(days: 5)),
-          imageUrl: 'assets/images/jazz.jpg',
-          isFree: true,
-          price: 0,
-          restrictions: 'No alcohol',
-          organizerId: 'org2',
-          organizerName: 'City Events',
-          category: 'Music',
-          attendeeCount: 189,
-          tags: ['Music', 'Outdoor', 'Jazz'],
-          isInterested: true,
-        ),
-        Event(
-          id: '7',
-          title: 'Book Club Meeting',
-          description: 'Discussion on "The Great Gatsby"',
-          location: 'Local Library',
-          latitude: 40.758896,
-          longitude: -73.985130,
-          date: DateTime.now().add(const Duration(days: 7)),
-          imageUrl: 'assets/images/book_club.jpg',
-          isFree: true,
-          price: 0,
-          restrictions: 'Please read the book beforehand',
-          organizerId: 'org7',
-          organizerName: 'Literature Lovers',
-          category: 'Book Club',
-          attendeeCount: 24,
-          tags: ['Books', 'Discussion', 'Literature'],
-          isInterested: true,
-        ),
-      ];
-
-      _hostedEvents = [
-        Event(
-          id: '5',
-          title: 'Cooking Workshop',
-          description: 'Learn to cook Italian pasta from scratch',
-          location: 'Culinary Institute',
-          latitude: 40.718796,
-          longitude: -74.001239,
-          date: DateTime.now().add(const Duration(days: 10)),
-          imageUrl: 'assets/images/cooking.jpg',
-          isFree: false,
-          price: 35.00,
-          restrictions: 'Ingredients provided',
-          organizerId: _currentUser?.uid ?? 'user1',
-          organizerName: 'Your Name',
-          category: 'Workshop',
-          attendeeCount: 18,
-          tags: ['Cooking', 'Italian', 'Food'],
-        ),
-        Event(
-          id: '6',
-          title: 'Photography Workshop',
-          description: 'Learn the basics of photography and composition',
-          location: 'Downtown Art Center',
-          latitude: 40.712776,
-          longitude: -74.005974,
-          date: DateTime.now().add(const Duration(days: 1)),
-          imageUrl: 'assets/images/photography.jpg',
-          isFree: false,
-          price: 25.00,
-          restrictions: 'Bring your own camera',
-          organizerId: _currentUser?.uid ?? 'user1',
-          organizerName: 'Your Name',
-          category: 'Workshop',
-          attendeeCount: 12,
-          tags: ['Photography', 'Art', 'Workshop'],
-        ),
-      ];
-
-      _isLoading = false;
+      _isLoading = true;
     });
+
+    try {
+      // Load interested events from Firestore
+      final userId = _currentUser?.uid;
+      if (userId != null) {
+        // Query user interested events collection
+        final interestedSnapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .collection('interested_events')
+            .get();
+
+        List<EventModel> interestedEvents = [];
+
+        // For each interested event ID, fetch the full event details
+        for (var doc in interestedSnapshot.docs) {
+          String eventId = doc.id;
+          final eventDoc = await FirebaseFirestore.instance
+              .collection('events')
+              .doc(eventId)
+              .get();
+
+          if (eventDoc.exists) {
+            final eventData = eventDoc.data() as Map<String, dynamic>;
+            interestedEvents.add(EventModel.fromMap(eventData, eventId));
+          }
+        }
+
+        // Load hosted events
+        final hostedEventsSnapshot = await FirebaseFirestore.instance
+            .collection('events')
+            .where('organizerId', isEqualTo: userId)
+            .get();
+
+        List<EventModel> hostedEvents = hostedEventsSnapshot.docs
+            .map((doc) =>
+                EventModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+            .toList();
+
+        setState(() {
+          _interestedEvents = interestedEvents;
+          _hostedEvents = hostedEvents;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading events: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -158,7 +109,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        backgroundColor: AppTheme.primaryColor,
+        backgroundColor: const Color(0xFF5E43C3),
         elevation: 0,
         title: Text(
           'My Events',
@@ -178,23 +129,27 @@ class _MyEventsScreenState extends State<MyEventsScreen>
             textStyle: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
+              color: Colors.white,
             ),
           ),
           unselectedLabelStyle: GoogleFonts.londrinaSolid(
             textStyle: const TextStyle(
               fontSize: 18,
+              color: Colors.white70,
             ),
           ),
           tabs: const [
-            Tab(text: 'Interested', icon: Icon(Icons.favorite)),
-            Tab(text: 'Hosting', icon: Icon(Icons.event)),
+            Tab(
+                text: 'Interested',
+                icon: Icon(Icons.favorite, color: Colors.white)),
+            Tab(text: 'Hosting', icon: Icon(Icons.event, color: Colors.white)),
           ],
         ),
       ),
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(
-                color: AppTheme.primaryColor,
+                color: Color(0xFF5E43C3),
               ),
             )
           : TabBarView(
@@ -213,11 +168,11 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                 'Create Event functionality coming soon!',
                 style: GoogleFonts.londrinaSolid(),
               ),
-              backgroundColor: AppTheme.primaryColor,
+              backgroundColor: const Color(0xFF5E43C3),
             ),
           );
         },
-        backgroundColor: AppTheme.primaryColor,
+        backgroundColor: const Color(0xFF5E43C3),
         child: const Icon(Icons.add),
       ),
     );
@@ -233,7 +188,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
     }
 
     return RefreshIndicator(
-      color: AppTheme.primaryColor,
+      color: const Color(0xFF5E43C3),
       onRefresh: _loadEvents,
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
@@ -255,7 +210,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
     }
 
     return RefreshIndicator(
-      color: AppTheme.primaryColor,
+      color: const Color(0xFF5E43C3),
       onRefresh: _loadEvents,
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
@@ -308,14 +263,14 @@ class _MyEventsScreenState extends State<MyEventsScreen>
     );
   }
 
-  Widget _buildEventCard(Event event,
+  Widget _buildEventCard(EventModel event,
       {bool isInterested = false, bool isHosting = false}) {
     return GestureDetector(
       onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => EventDetailScreen(event: event),
+            builder: (context) => EventDetailsScreen(event: event),
           ),
         ).then((_) => _loadEvents());
       },
@@ -344,12 +299,27 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                     topLeft: Radius.circular(20),
                     topRight: Radius.circular(20),
                   ),
-                  child: Image.asset(
-                    'assets/images/event_placeholder.jpg',
-                    width: double.infinity,
-                    height: 150,
-                    fit: BoxFit.cover,
-                  ),
+                  child: event.imageUrl != null && event.imageUrl!.isNotEmpty
+                      ? Image.network(
+                          event.imageUrl!,
+                          width: double.infinity,
+                          height: 150,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Image.asset(
+                              'assets/images/event_placeholder.jpg',
+                              width: double.infinity,
+                              height: 150,
+                              fit: BoxFit.cover,
+                            );
+                          },
+                        )
+                      : Image.asset(
+                          'assets/images/event_placeholder.jpg',
+                          width: double.infinity,
+                          height: 150,
+                          fit: BoxFit.cover,
+                        ),
                 ),
                 Positioned(
                   top: 10,
@@ -358,11 +328,11 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: AppTheme.primaryColor,
+                      color: const Color(0xFF5E43C3),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      event.category,
+                      event.eventType,
                       style: GoogleFonts.londrinaSolid(
                         textStyle: const TextStyle(
                           fontSize: 14,
@@ -418,7 +388,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                     children: [
                       Expanded(
                         child: Text(
-                          event.title,
+                          event.name,
                           style: GoogleFonts.londrinaSolid(
                             textStyle: TextStyle(
                               fontSize: 22,
@@ -432,18 +402,45 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                       ),
                       if (isInterested)
                         IconButton(
-                          icon: Icon(
-                            event.isInterested
-                                ? Icons.favorite
-                                : Icons.favorite_border,
-                            color:
-                                event.isInterested ? Colors.red : Colors.grey,
+                          icon: const Icon(
+                            Icons.favorite,
+                            color: Colors.red,
                           ),
-                          onPressed: () {
-                            setState(() {
-                              event.isInterested = !event.isInterested;
-                              // In a real app, update this in Firebase
-                            });
+                          onPressed: () async {
+                            // Remove from interested events
+                            try {
+                              await FirebaseFirestore.instance
+                                  .collection('users')
+                                  .doc(_currentUser?.uid)
+                                  .collection('interested_events')
+                                  .doc(event.id)
+                                  .delete();
+
+                              setState(() {
+                                _interestedEvents
+                                    .removeWhere((e) => e.id == event.id);
+                              });
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Removed from interested events',
+                                    style: GoogleFonts.londrinaSolid(),
+                                  ),
+                                  backgroundColor: const Color(0xFF5E43C3),
+                                ),
+                              );
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Error: Unable to remove event',
+                                    style: GoogleFonts.londrinaSolid(),
+                                  ),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
                           },
                         ),
                     ],
@@ -454,11 +451,11 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                       Icon(
                         Icons.calendar_today,
                         size: 16,
-                        color: AppTheme.primaryColor,
+                        color: const Color(0xFF5E43C3),
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '${event.date.day}/${event.date.month}/${event.date.year} at ${event.date.hour}:${event.date.minute.toString().padLeft(2, '0')}',
+                        '${event.eventDate.day}/${event.eventDate.month}/${event.eventDate.year} at ${event.eventDate.hour}:${event.eventDate.minute.toString().padLeft(2, '0')}',
                         style: GoogleFonts.londrinaSolid(
                           textStyle: TextStyle(
                             fontSize: 16,
@@ -474,7 +471,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                       Icon(
                         Icons.location_on,
                         size: 16,
-                        color: AppTheme.primaryColor,
+                        color: const Color(0xFF5E43C3),
                       ),
                       const SizedBox(width: 4),
                       Expanded(
@@ -498,13 +495,13 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                       Icon(
                         Icons.attach_money,
                         size: 16,
-                        color: AppTheme.primaryColor,
+                        color: const Color(0xFF5E43C3),
                       ),
                       const SizedBox(width: 4),
                       Text(
                         event.isFree
                             ? 'Free'
-                            : '\$${event.price.toStringAsFixed(2)}',
+                            : '\$${event.cost.toStringAsFixed(2)}',
                         style: GoogleFonts.londrinaSolid(
                           textStyle: TextStyle(
                             fontSize: 16,
@@ -518,15 +515,28 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                       ),
                       const Spacer(),
                       if (isHosting)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryColor,
-                            borderRadius: BorderRadius.circular(20),
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    EditEventScreen(event: event),
+                              ),
+                            ).then((_) => _loadEvents());
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF5E43C3),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
                           ),
                           child: Text(
-                            'Manage',
+                            'Edit',
                             style: GoogleFonts.londrinaSolid(
                               textStyle: const TextStyle(
                                 fontSize: 14,
@@ -536,7 +546,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                             ),
                           ),
                         ),
-                      if (isInterested && event.isInterested)
+                      if (isInterested)
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 6),
@@ -549,7 +559,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                             style: GoogleFonts.londrinaSolid(
                               textStyle: TextStyle(
                                 fontSize: 14,
-                                color: AppTheme.primaryColor,
+                                color: const Color(0xFF5E43C3),
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -568,7 +578,10 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
-                          _buildQuickStat('Views', '324', Icons.visibility),
+                          _buildQuickStat(
+                              'Views',
+                              '${(event.attendeeCount * 1.8).round()}',
+                              Icons.visibility),
                           _buildVerticalDivider(),
                           _buildQuickStat('Interested',
                               event.attendeeCount.toString(), Icons.favorite),
@@ -597,7 +610,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
             Icon(
               icon,
               size: 16,
-              color: AppTheme.primaryColor,
+              color: const Color(0xFF5E43C3),
             ),
             const SizedBox(width: 4),
             Text(

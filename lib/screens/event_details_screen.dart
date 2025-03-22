@@ -4,11 +4,162 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:event_lister/models/event_model.dart';
 import 'package:maps_launcher/maps_launcher.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
-class EventDetailsScreen extends StatelessWidget {
+class EventDetailsScreen extends StatefulWidget {
   final EventModel event;
 
   const EventDetailsScreen({Key? key, required this.event}) : super(key: key);
+
+  @override
+  State<EventDetailsScreen> createState() => _EventDetailsScreenState();
+}
+
+class _EventDetailsScreenState extends State<EventDetailsScreen> {
+  bool _isInterested = false;
+  int _interestedCount = 0;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchInterestedStatus();
+  }
+
+  Future<void> _fetchInterestedStatus() async {
+    try {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) {
+        setState(() {
+          _interestedCount = widget.event.interestedCount;
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // Get event document
+      final eventDoc = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(widget.event.id)
+          .get();
+
+      if (!eventDoc.exists) {
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // Get the list of interested users
+      final data = eventDoc.data() as Map<String, dynamic>;
+      final List<String> interestedUsers =
+          List<String>.from(data['interestedUsers'] ?? []);
+      final int interestedCount =
+          data['interestedCount'] ?? interestedUsers.length;
+
+      setState(() {
+        _isInterested = interestedUsers.contains(userId);
+        _interestedCount = interestedCount;
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Error fetching interested status: $e');
+      setState(() {
+        _interestedCount = widget.event.interestedCount;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _toggleInterested() async {
+    try {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please login to mark interest in events'),
+          ),
+        );
+        return;
+      }
+
+      setState(() {
+        _isLoading = true;
+      });
+
+      // Reference to the event document
+      final eventRef =
+          FirebaseFirestore.instance.collection('events').doc(widget.event.id);
+
+      // Update the interested status
+      if (_isInterested) {
+        // Remove interest
+        await eventRef.update({
+          'interestedUsers': FieldValue.arrayRemove([userId]),
+          'interestedCount': FieldValue.increment(-1),
+        });
+        setState(() {
+          _isInterested = false;
+          _interestedCount--;
+        });
+      } else {
+        // Add interest
+        await eventRef.update({
+          'interestedUsers': FieldValue.arrayUnion([userId]),
+          'interestedCount': FieldValue.increment(1),
+        });
+        setState(() {
+          _isInterested = true;
+          _interestedCount++;
+        });
+      }
+
+      setState(() {
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Error toggling interested status: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to update interested status'),
+        ),
+      );
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _launchRegistrationLink() async {
+    if (widget.event.registrationLink == null ||
+        widget.event.registrationLink!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Registration link not available'),
+        ),
+      );
+      return;
+    }
+
+    try {
+      if (await canLaunch(widget.event.registrationLink!)) {
+        await launch(widget.event.registrationLink!);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not launch registration link'),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error launching registration link'),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,9 +173,10 @@ class EventDetailsScreen extends StatelessWidget {
             pinned: true,
             backgroundColor: const Color(0xFF5E43C3),
             flexibleSpace: FlexibleSpaceBar(
-              background: event.imageUrl != null && event.imageUrl!.isNotEmpty
+              background: widget.event.imageUrl != null &&
+                      widget.event.imageUrl!.isNotEmpty
                   ? Image.network(
-                      event.imageUrl!,
+                      widget.event.imageUrl!,
                       fit: BoxFit.cover,
                     )
                   : Container(
@@ -62,19 +214,19 @@ class EventDetailsScreen extends StatelessWidget {
                   Row(
                     children: [
                       _buildTag(
-                        event.eventType,
+                        widget.event.eventType,
                         const Color(0xFF5E43C3).withOpacity(0.2),
                         const Color(0xFF5E43C3),
                       ),
                       const SizedBox(width: 10),
                       _buildTag(
-                        event.isFree
+                        widget.event.isFree
                             ? 'Free'
-                            : 'Paid: \$${event.cost?.toStringAsFixed(2)}',
-                        event.isFree
+                            : 'Paid: ₹${widget.event.cost.toStringAsFixed(2)}',
+                        widget.event.isFree
                             ? Colors.green.withOpacity(0.2)
                             : Colors.orange.withOpacity(0.2),
-                        event.isFree ? Colors.green : Colors.orange,
+                        widget.event.isFree ? Colors.green : Colors.orange,
                       ),
                     ],
                   ),
@@ -83,7 +235,7 @@ class EventDetailsScreen extends StatelessWidget {
 
                   // Event Name
                   Text(
-                    event.name,
+                    widget.event.name,
                     style: GoogleFonts.aBeeZee(
                       textStyle: const TextStyle(
                         fontSize: 24,
@@ -99,7 +251,8 @@ class EventDetailsScreen extends StatelessWidget {
                   _buildInfoRow(
                     Icons.calendar_today,
                     'Date & Time',
-                    DateFormat('EEEE, MMM dd, yyyy').format(event.eventDate),
+                    DateFormat('EEEE, MMM dd, yyyy')
+                        .format(widget.event.eventDate),
                   ),
 
                   const SizedBox(height: 5),
@@ -107,7 +260,7 @@ class EventDetailsScreen extends StatelessWidget {
                   _buildInfoRow(
                     Icons.access_time,
                     'Time',
-                    DateFormat('h:mm a').format(event.eventDate),
+                    DateFormat('h:mm a').format(widget.event.eventDate),
                   ),
 
                   const SizedBox(height: 5),
@@ -115,18 +268,23 @@ class EventDetailsScreen extends StatelessWidget {
                   _buildInfoRow(
                     Icons.timelapse,
                     'Duration',
-                    event.eventDuration,
+                    widget.event.eventDuration,
                   ),
 
                   const SizedBox(height: 20),
 
                   // Location with Map Option
-                  _buildLocationSection(event),
+                  _buildLocationSection(widget.event),
 
                   const SizedBox(height: 20),
 
                   // Registration Info
-                  _buildRegistrationSection(event),
+                  _buildRegistrationSection(widget.event),
+
+                  const SizedBox(height: 20),
+
+                  // Host Information - New Section
+                  _buildHostSection(widget.event),
 
                   const SizedBox(height: 20),
 
@@ -134,13 +292,13 @@ class EventDetailsScreen extends StatelessWidget {
                   _buildInfoRow(
                     Icons.people,
                     'Event Size',
-                    event.eventSize,
+                    widget.event.eventSize,
                   ),
 
                   const SizedBox(height: 20),
 
                   // Target Audience
-                  _buildTargetAudienceSection(event),
+                  _buildTargetAudienceSection(widget.event),
 
                   const SizedBox(height: 20),
 
@@ -148,7 +306,7 @@ class EventDetailsScreen extends StatelessWidget {
                   _buildSectionTitle('About This Event'),
                   const SizedBox(height: 10),
                   Text(
-                    event.description,
+                    widget.event.description,
                     style: GoogleFonts.aBeeZee(
                       textStyle: const TextStyle(
                         fontSize: 16,
@@ -162,7 +320,7 @@ class EventDetailsScreen extends StatelessWidget {
 
                   // Posted Date
                   Text(
-                    'Posted on ${DateFormat('MMM dd, yyyy').format(event.createdAt)}',
+                    'Posted on ${DateFormat('MMM dd, yyyy').format(widget.event.createdAt)}',
                     style: GoogleFonts.aBeeZee(
                       textStyle: const TextStyle(
                         fontSize: 14,
@@ -179,49 +337,153 @@ class EventDetailsScreen extends StatelessWidget {
           ),
         ],
       ),
-      bottomNavigationBar: event.requiresRegistration
-          ? Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.2),
+              spreadRadius: 1,
+              blurRadius: 5,
+              offset: const Offset(0, -3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withOpacity(0.2),
-                    spreadRadius: 1,
-                    blurRadius: 5,
-                    offset: const Offset(0, -3),
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.people,
+                    size: 16,
+                    color: Color(0xFF5E43C3),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    '$_interestedCount interested',
+                    style: GoogleFonts.aBeeZee(
+                      textStyle: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF666666),
+                      ),
+                    ),
                   ),
                 ],
               ),
-              child: ElevatedButton(
-                onPressed: () {
-                  // TODO: Implement registration logic
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Registration feature coming soon!'),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Row(
+                children: [
+                  // Register Button - Show only if registration is required and link is available
+                  if (widget.event.requiresRegistration &&
+                      widget.event.registrationLink != null &&
+                      widget.event.registrationLink!.isNotEmpty)
+                    Expanded(
+                      flex: 1,
+                      child: ElevatedButton(
+                        onPressed: _launchRegistrationLink,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.app_registration,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Register',
+                              style: GoogleFonts.aBeeZee(
+                                textStyle: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF5E43C3),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                child: Text(
-                  event.isFree ? 'Register Now' : 'Buy Tickets',
-                  style: GoogleFonts.aBeeZee(
-                    textStyle: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+
+                  // Add spacing between buttons if both are shown
+                  if (widget.event.requiresRegistration &&
+                      widget.event.registrationLink != null &&
+                      widget.event.registrationLink!.isNotEmpty)
+                    const SizedBox(width: 10),
+
+                  // Interested Button
+                  Expanded(
+                    flex: widget.event.requiresRegistration &&
+                            widget.event.registrationLink != null &&
+                            widget.event.registrationLink!.isNotEmpty
+                        ? 1
+                        : 2,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _toggleInterested,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isInterested
+                            ? Colors.grey[300]
+                            : const Color(0xFF5E43C3),
+                        foregroundColor:
+                            _isInterested ? Colors.black : Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  _isInterested
+                                      ? Icons.check
+                                      : Icons.star_border,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  _isInterested ? 'Interested' : 'Interested',
+                                  style: GoogleFonts.aBeeZee(
+                                    textStyle: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                     ),
                   ),
-                ),
+                ],
               ),
-            )
-          : null,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -390,6 +652,7 @@ class EventDetailsScreen extends StatelessWidget {
     );
   }
 
+  // Updated Registration Section with Registration Link
   Widget _buildRegistrationSection(EventModel event) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -444,6 +707,136 @@ class EventDetailsScreen extends StatelessWidget {
                     ),
                   ),
                 ),
+              ),
+            ],
+          ),
+        ),
+
+        // Registration Link - Display only if event requires registration and link exists
+        if (event.requiresRegistration &&
+            event.registrationLink != null &&
+            event.registrationLink!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 10.0),
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                if (await canLaunch(event.registrationLink!)) {
+                  await launch(event.registrationLink!);
+                }
+              },
+              icon: const Icon(Icons.link, size: 16),
+              label: const Text('Registration Link'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.green,
+                side: const BorderSide(color: Colors.green),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // New Host Section
+  Widget _buildHostSection(EventModel event) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle('Event Host'),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF5F5F5),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.person,
+                    size: 18,
+                    color: Color(0xFF5E43C3),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    event.hostName,
+                    style: GoogleFonts.aBeeZee(
+                      textStyle: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF333333),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.email,
+                    size: 16,
+                    color: Color(0xFF5E43C3),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () async {
+                        final Uri emailUri = Uri(
+                          scheme: 'mailto',
+                          path: event.hostEmail,
+                        );
+                        if (await canLaunch(emailUri.toString())) {
+                          await launch(emailUri.toString());
+                        }
+                      },
+                      child: Text(
+                        event.hostEmail,
+                        style: GoogleFonts.aBeeZee(
+                          textStyle: TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF5E43C3),
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.phone,
+                    size: 16,
+                    color: Color(0xFF5E43C3),
+                  ),
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    onTap: () async {
+                      final Uri telUri = Uri(
+                        scheme: 'tel',
+                        path: event.hostPhone,
+                      );
+                      if (await canLaunch(telUri.toString())) {
+                        await launch(telUri.toString());
+                      }
+                    },
+                    child: Text(
+                      event.hostPhone,
+                      style: GoogleFonts.aBeeZee(
+                        textStyle: TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF5E43C3),
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

@@ -2,50 +2,53 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:geocoding/geocoding.dart'; // Add this import for reverse geocoding
+import 'package:geocoding/geocoding.dart';
 import 'package:event_lister/models/event_model.dart';
 import 'package:uuid/uuid.dart';
 import 'package:event_lister/theme/app_theme.dart';
 
-class CreateEventScreen extends StatefulWidget {
-  const CreateEventScreen({Key? key}) : super(key: key);
+class EditEventScreen extends StatefulWidget {
+  final EventModel event;
+
+  const EditEventScreen({Key? key, required this.event}) : super(key: key);
 
   @override
-  State<CreateEventScreen> createState() => _CreateEventScreenState();
+  State<EditEventScreen> createState() => _EditEventScreenState();
 }
 
-class _CreateEventScreenState extends State<CreateEventScreen> {
+class _EditEventScreenState extends State<EditEventScreen> {
   // Form key
   final _formKey = GlobalKey<FormState>();
 
   // Image picker
   final ImagePicker _picker = ImagePicker();
   File? _selectedImage;
+  String? _existingImageUrl;
 
   // Form controllers
-  final _nameController = TextEditingController();
-  final _descriptionController = TextEditingController();
-  final _locationController = TextEditingController();
-  final _locationLinkController = TextEditingController();
-  final _costController = TextEditingController();
-  final _registrationLinkController = TextEditingController();
-  final _hostNameController = TextEditingController();
-  final _hostPhoneController = TextEditingController();
-  final _hostEmailController = TextEditingController();
+  late final TextEditingController _nameController;
+  late final TextEditingController _descriptionController;
+  late final TextEditingController _locationController;
+  late final TextEditingController _locationLinkController;
+  late final TextEditingController _costController;
+  late final TextEditingController _registrationLinkController;
+  late final TextEditingController _hostNameController;
+  late final TextEditingController _hostPhoneController;
+  late final TextEditingController _hostEmailController;
+
   // Form values
-  String _eventType = 'Festival';
-  String _eventSize = 'Small';
-  String _eventDuration = 'Few hours';
-  DateTime _eventDate = DateTime.now();
-  TimeOfDay _eventTime = TimeOfDay.now();
-  bool _requiresRegistration = false;
-  List<String> _targetAudience = ['General'];
-  bool _isFree = true;
+  late String _eventType;
+  late String _eventSize;
+  late String _eventDuration;
+  late DateTime _eventDate;
+  late TimeOfDay _eventTime;
+  late bool _requiresRegistration;
+  late List<String> _targetAudience;
+  late bool _isFree;
 
   // Location data
   double? _latitude;
@@ -53,6 +56,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
   // Loading state
   bool _isLoading = false;
+  bool _imageChanged = false;
 
   // Available options for form dropdowns
   final List<String> _eventTypes = [
@@ -77,17 +81,52 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+
+    // Initialize controllers with existing event data
+    _nameController = TextEditingController(text: widget.event.name);
+    _descriptionController =
+        TextEditingController(text: widget.event.description);
+    _locationController = TextEditingController(text: widget.event.location);
+    _locationLinkController =
+        TextEditingController(text: widget.event.locationLink ?? '');
+    _costController = TextEditingController(
+        text: widget.event.isFree ? '' : widget.event.cost.toString());
+
+    // Initialize form values
+    _eventType = widget.event.eventType;
+    _eventSize = widget.event.eventSize;
+    _eventDuration = widget.event.eventDuration;
+    _eventDate = widget.event.eventDate;
+    _requiresRegistration = widget.event.requiresRegistration;
+    _targetAudience = List<String>.from(widget.event.targetAudience);
+    _isFree = widget.event.isFree;
+
+    // Initialize location data
+    _latitude = widget.event.latitude;
+    _longitude = widget.event.longitude;
+
+    // Initialize existing image URL
+    _existingImageUrl = widget.event.imageUrl;
+
+    // Initialize new fields
+    _eventTime = widget.event.eventTime;
+    if (widget.event.registrationLink != null) {
+      _registrationLinkController.text = widget.event.registrationLink!;
+    }
+    _hostNameController.text = widget.event.hostName;
+    _hostPhoneController.text = widget.event.hostPhone;
+    _hostEmailController.text = widget.event.hostEmail;
+  }
+
+  @override
   void dispose() {
     _nameController.dispose();
     _descriptionController.dispose();
     _locationController.dispose();
     _locationLinkController.dispose();
     _costController.dispose();
-
-    _registrationLinkController.dispose();
-    _hostNameController.dispose();
-    _hostPhoneController.dispose();
-    _hostEmailController.dispose();
     super.dispose();
   }
 
@@ -97,6 +136,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     if (image != null) {
       setState(() {
         _selectedImage = File(image.path);
+        _imageChanged = true;
       });
     }
   }
@@ -112,18 +152,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     if (picked != null && picked != _eventDate) {
       setState(() {
         _eventDate = picked;
-      });
-    }
-  }
-
-  Future<void> _selectTime(BuildContext context) async {
-    final TimeOfDay? picked = await showTimePicker(
-      context: context,
-      initialTime: _eventTime,
-    );
-    if (picked != null && picked != _eventTime) {
-      setState(() {
-        _eventTime = picked;
       });
     }
   }
@@ -225,9 +253,10 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     }
   }
 
-  // Upload image to Firebase Storage
+  // Upload image to Firebase Storage if changed
   Future<String?> _uploadImage() async {
-    if (_selectedImage == null) return null;
+    if (!_imageChanged) return _existingImageUrl;
+    if (_selectedImage == null) return _existingImageUrl;
 
     try {
       final String fileName = 'event_images/${Uuid().v4()}.jpg';
@@ -239,12 +268,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       return downloadUrl;
     } catch (e) {
       print("Error uploading image: $e");
-      return null;
+      return _existingImageUrl;
     }
   }
 
-  // Save event to Firestore
-  Future<void> _saveEvent() async {
+  // Update event in Firestore
+  Future<void> _updateEvent() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -255,27 +284,16 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       // Upload image if selected
       String? imageUrl = await _uploadImage();
 
-      // Get current user ID
-      final String? userId = FirebaseAuth.instance.currentUser?.uid;
-      if (userId == null) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('You need to be logged in to create an event')));
-        setState(() {
-          _isLoading = false;
-        });
-        return;
-      }
-
-      // Create event object
-      final event = EventModel(
-        id: '', // Will be assigned by Firestore
+      // Update event object
+      final updatedEvent = EventModel(
+        id: widget.event.id,
         name: _nameController.text,
         description: _descriptionController.text,
         eventType: _eventType,
         eventSize: _eventSize,
         eventDuration: _eventDuration,
         eventDate: _eventDate,
-        eventTime: _eventTime, // Add the time
+        eventTime: _eventTime, // Add event time
         location: _locationController.text,
         locationLink: _locationLinkController.text.isEmpty
             ? null
@@ -287,28 +305,30 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         targetAudience: _targetAudience,
         isFree: _isFree,
         cost: _isFree ? 0 : (double.tryParse(_costController.text) ?? 0),
-        creatorId: userId,
+        creatorId: widget.event.creatorId,
         imageUrl: imageUrl,
         latitude: _latitude,
         longitude: _longitude,
-        createdAt: DateTime.now(),
+        createdAt: widget.event.createdAt,
         hostName: _hostNameController.text, // Add host name
         hostPhone: _hostPhoneController.text, // Add host phone
         hostEmail: _hostEmailController.text, // Add host email
       );
-      // Save to Firestore
+
+      // Update in Firestore
       await FirebaseFirestore.instance
           .collection('events')
-          .add(event.toFirestore());
+          .doc(widget.event.id)
+          .update(updatedEvent.toFirestore());
 
       // Show success message and navigate back
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Event created successfully!')));
+          const SnackBar(content: Text('Event updated successfully!')));
       Navigator.pop(context);
     } catch (e) {
-      print("Error saving event: $e");
+      print("Error updating event: $e");
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Error creating event: $e')));
+          .showSnackBar(SnackBar(content: Text('Error updating event: $e')));
       setState(() {
         _isLoading = false;
       });
@@ -318,10 +338,10 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white, // Explicitly set to white
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text(
-          'Create Event',
+          'Edit Event',
           style: GoogleFonts.londrinaSolid(
             textStyle: const TextStyle(
               fontSize: 22,
@@ -368,26 +388,53 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                                   fit: BoxFit.cover,
                                 ),
                               )
-                            : Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.add_photo_alternate,
-                                      size: 50,
-                                      color: Colors.grey[600],
+                            : _existingImageUrl != null
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Image.network(
+                                      _existingImageUrl!,
+                                      fit: BoxFit.cover,
+                                      loadingBuilder:
+                                          (context, child, loadingProgress) {
+                                        if (loadingProgress == null)
+                                          return child;
+                                        return Center(
+                                          child: CircularProgressIndicator(
+                                            value: loadingProgress
+                                                        .expectedTotalBytes !=
+                                                    null
+                                                ? loadingProgress
+                                                        .cumulativeBytesLoaded /
+                                                    loadingProgress
+                                                        .expectedTotalBytes!
+                                                : null,
+                                            color: AppTheme.primaryColor,
+                                          ),
+                                        );
+                                      },
                                     ),
-                                    const SizedBox(height: 10),
-                                    Text(
-                                      'Add Event Image',
-                                      style: GoogleFonts.aBeeZee(
-                                        color: Colors.grey[800],
-                                        fontSize: 16,
-                                      ),
+                                  )
+                                : Center(
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.add_photo_alternate,
+                                          size: 50,
+                                          color: Colors.grey[600],
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Text(
+                                          'Update Event Image',
+                                          style: GoogleFonts.aBeeZee(
+                                            color: Colors.grey[800],
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ],
-                                ),
-                              ),
+                                  ),
                       ),
                     ),
                     const SizedBox(height: 15),
@@ -602,42 +649,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                       ),
                     ),
                     const SizedBox(height: 15),
-                    // Time Picker
-                    GestureDetector(
-                      onTap: () => _selectTime(context),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 15),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[200],
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Event Time',
-                              style: GoogleFonts.aBeeZee(
-                                textStyle: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                            ),
-                            Text(
-                              _eventTime.format(context),
-                              style: GoogleFonts.aBeeZee(
-                                textStyle: const TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.black,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 15),
+
                     // Event Location
                     Row(
                       children: [
@@ -730,34 +742,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                       ],
                     ),
                     const SizedBox(height: 15),
-                    // Registration Link (shown only when registration is required)
-                    if (_requiresRegistration)
-                      TextFormField(
-                        controller: _registrationLinkController,
-                        decoration: InputDecoration(
-                          hintText: 'Registration Link',
-                          hintStyle: GoogleFonts.aBeeZee(
-                            color: Colors.grey[600],
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey[200],
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(30),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                        style: GoogleFonts.aBeeZee(
-                          color: Colors.black,
-                        ),
-                        validator: (value) {
-                          if (_requiresRegistration &&
-                              (value == null || value.isEmpty)) {
-                            return 'Please enter registration link';
-                          }
-                          return null;
-                        },
-                      ),
-                    if (_requiresRegistration) const SizedBox(height: 15),
+
                     // Target Audience
                     Text(
                       'Target Audience',
@@ -812,10 +797,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                     Row(
                       children: [
                         Theme(
-                          // Use Theme to override the radio button colors
                           data: ThemeData(
-                            unselectedWidgetColor:
-                                Colors.black, // For unselected radio button
+                            unselectedWidgetColor: Colors.black,
                           ),
                           child: Radio(
                             value: true,
@@ -825,8 +808,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                                 _isFree = value!;
                               });
                             },
-                            activeColor:
-                                Colors.black, // For selected radio button
+                            activeColor: Colors.black,
                           ),
                         ),
                         Text(
@@ -840,10 +822,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                         ),
                         const SizedBox(width: 30),
                         Theme(
-                          // Use Theme to override the radio button colors
                           data: ThemeData(
-                            unselectedWidgetColor:
-                                Colors.black, // For unselected radio button
+                            unselectedWidgetColor: Colors.black,
                           ),
                           child: Radio(
                             value: false,
@@ -853,8 +833,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                                 _isFree = value!;
                               });
                             },
-                            activeColor:
-                                Colors.black, // For selected radio button
+                            activeColor: Colors.black,
                           ),
                         ),
                         Text(
@@ -884,8 +863,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                             borderSide: BorderSide.none,
                           ),
                           prefixIcon: const Icon(
-                            Icons
-                                .currency_rupee, // Changed from attach_money to currency_rupee
+                            Icons.currency_rupee,
                             color: Colors.grey,
                           ),
                         ),
@@ -901,101 +879,13 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                         },
                       ),
                     const SizedBox(height: 30),
-// 5. Host Details
-                    _buildSectionTitle('5', 'Host Details'),
-                    const SizedBox(height: 15),
 
-// Host Name
-                    TextFormField(
-                      controller: _hostNameController,
-                      decoration: InputDecoration(
-                        hintText: 'Host Name',
-                        hintStyle: GoogleFonts.aBeeZee(
-                          color: Colors.grey[600],
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey[200],
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(30),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      style: GoogleFonts.aBeeZee(
-                        color: Colors.black,
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter host name';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 15),
-
-// Host Phone
-                    TextFormField(
-                      controller: _hostPhoneController,
-                      decoration: InputDecoration(
-                        hintText: 'Host Contact Number',
-                        hintStyle: GoogleFonts.aBeeZee(
-                          color: Colors.grey[600],
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey[200],
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(30),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      style: GoogleFonts.aBeeZee(
-                        color: Colors.black,
-                      ),
-                      keyboardType: TextInputType.phone,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter host contact number';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 15),
-
-// Host Email
-                    TextFormField(
-                      controller: _hostEmailController,
-                      decoration: InputDecoration(
-                        hintText: 'Host Email',
-                        hintStyle: GoogleFonts.aBeeZee(
-                          color: Colors.grey[600],
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey[200],
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(30),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      style: GoogleFonts.aBeeZee(
-                        color: Colors.black,
-                      ),
-                      keyboardType: TextInputType.emailAddress,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter host email';
-                        }
-                        if (!value.contains('@')) {
-                          return 'Please enter a valid email';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 30),
-                    // Submit Button
+                    // Update Button
                     SizedBox(
                       width: double.infinity,
                       height: 50,
                       child: ElevatedButton(
-                        onPressed: _saveEvent,
+                        onPressed: _updateEvent,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.primaryColor,
                           foregroundColor: Colors.white,
@@ -1004,7 +894,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                           ),
                         ),
                         child: Text(
-                          'Create Event',
+                          'Update Event',
                           style: GoogleFonts.londrinaSolid(
                             textStyle: const TextStyle(
                               fontSize: 18,

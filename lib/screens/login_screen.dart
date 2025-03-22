@@ -274,7 +274,7 @@ class _LoginScreenState extends State<LoginScreen>
             // Full screen city background with opacity
             Positioned.fill(
               child: Opacity(
-                opacity: 0.15,
+                opacity: 0.16,
                 child: Image.asset(
                   'assets/images/city-bg.jpg',
                   fit: BoxFit.cover,

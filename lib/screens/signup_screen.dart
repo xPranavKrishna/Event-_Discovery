@@ -66,39 +66,55 @@ class _SignupScreenState extends State<SignupScreen>
     });
 
     try {
+      // Create user account
       final userCredential =
           await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
+      print("User created with ID: ${userCredential.user?.uid}");
+
       // Update display name
       await userCredential.user?.updateDisplayName(_nameController.text.trim());
 
-      // Send email verification
-      await userCredential.user?.sendEmailVerification();
+      // Force reload user to ensure we have latest data
+      await userCredential.user?.reload();
 
-      // Sign out the user to force them to verify and log in
-      // Don't sign them out here - let AuthWrapper handle this
-      // await FirebaseAuth.instance.signOut(); - REMOVED THIS LINE
+      // Send verification email - use the current user instance
+      User? user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        try {
+          await user.sendEmailVerification();
+          print("Verification email sent successfully to: ${user.email}");
+        } catch (e) {
+          print("Error sending verification email: $e");
+          throw Exception("Failed to send verification email: $e");
+        }
 
-      if (mounted) {
-        // Show verification message BEFORE navigation
-        showCustomSnackBar(
-          context,
-          'Account created successfully! Please check your email to verify your account before logging in.',
-          isError: false,
-        );
+        // Sign out the user to force them to verify email before logging in
+        await FirebaseAuth.instance.signOut();
 
-        // Add a small delay to allow the snackbar to appear
-        Future.delayed(const Duration(milliseconds: 800), () {
-          if (mounted) {
-            // Use pushReplacementNamed instead of pop for cleaner navigation
-            Navigator.pushReplacementNamed(context, '/login');
-          }
-        });
+        if (mounted) {
+          // Show verification message
+          showCustomSnackBar(
+            context,
+            'Account created successfully! Please check your email to verify your account before logging in.',
+            isError: false,
+          );
+
+          // Navigate to login screen after delay
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              Navigator.pushReplacementNamed(context, '/login');
+            }
+          });
+        }
+      } else {
+        throw Exception('User is null after creation');
       }
     } on FirebaseAuthException catch (e) {
+      print("Firebase Auth Exception: ${e.code} - ${e.message}");
       setState(() {
         _isLoading = false;
       });
@@ -111,12 +127,15 @@ class _SignupScreenState extends State<SignupScreen>
         errorMessage = 'An account already exists for that email.';
       } else if (e.code == 'invalid-email') {
         errorMessage = 'The email address is not valid.';
+      } else if (e.code == 'operation-not-allowed') {
+        errorMessage = 'Email/password accounts are not enabled.';
       }
 
       if (mounted) {
         showCustomSnackBar(context, errorMessage, isError: true);
       }
     } catch (e) {
+      print("Unexpected error during signup: $e");
       setState(() {
         _isLoading = false;
       });
@@ -124,7 +143,7 @@ class _SignupScreenState extends State<SignupScreen>
       if (mounted) {
         showCustomSnackBar(
           context,
-          'An unexpected error occurred. Please try again.',
+          'An unexpected error occurred: ${e.toString()}',
           isError: true,
         );
       }
