@@ -11,6 +11,7 @@ import 'package:geocoding/geocoding.dart'; // Add this import for reverse geocod
 import 'package:event_lister/models/event_model.dart';
 import 'package:uuid/uuid.dart';
 import 'package:event_lister/theme/app_theme.dart';
+import 'package:event_lister/screens/location_selection_screen.dart'; // Update path to match your project structure
 
 class CreateEventScreen extends StatefulWidget {
   const CreateEventScreen({Key? key}) : super(key: key);
@@ -223,6 +224,26 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  void _openLocationSearch() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => LocationSelectionScreen(
+          currentLocation: _locationController.text.isEmpty
+              ? 'Select Location'
+              : _locationController.text,
+          onLocationSelected: (displayName, latitude, longitude) {
+            setState(() {
+              _locationController.text = displayName;
+              _latitude = latitude;
+              _longitude = longitude;
+            });
+          },
+        ),
+      ),
+    );
   }
 
   // Upload image to Firebase Storage
@@ -644,6 +665,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                         Expanded(
                           child: TextFormField(
                             controller: _locationController,
+                            readOnly:
+                                true, // Make it read-only to prevent typing
                             decoration: InputDecoration(
                               hintText: 'Event Location',
                               hintStyle: GoogleFonts.aBeeZee(
@@ -655,17 +678,30 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                                 borderRadius: BorderRadius.circular(30),
                                 borderSide: BorderSide.none,
                               ),
-                              suffixIcon: IconButton(
-                                icon: const Icon(
-                                  Icons.my_location,
-                                  color: AppTheme.primaryColor,
-                                ),
-                                onPressed: _getCurrentLocation,
+                              suffixIcon: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.search,
+                                      color: AppTheme.primaryColor,
+                                    ),
+                                    onPressed: _openLocationSearch,
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.my_location,
+                                      color: AppTheme.primaryColor,
+                                    ),
+                                    onPressed: _getCurrentLocation,
+                                  ),
+                                ],
                               ),
                             ),
                             style: GoogleFonts.aBeeZee(
                               color: Colors.black,
                             ),
+                            onTap: _openLocationSearch, // Open search on tap
                             validator: (value) {
                               if (value == null || value.isEmpty) {
                                 return 'Please enter an event location';

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:event_lister/screens/my_events_screen.dart';
+import 'package:event_lister/screens/create_event_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
@@ -278,6 +279,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
+          backgroundColor: Colors.white,
           title: Text(
             'Logout',
             style: GoogleFonts.aBeeZee(
@@ -305,7 +307,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 style: GoogleFonts.aBeeZee(
                   textStyle: const TextStyle(
                     fontSize: 18,
-                    color: Colors.grey,
+                    color: Colors.black,
                   ),
                 ),
               ),
@@ -372,6 +374,65 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ),
+      bottomNavigationBar: Container(
+        color: const Color(0xFFF2F2F2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            BottomAppBar(
+              elevation: 0,
+              child: Container(
+                height: 60,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF2F2F2),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.home, size: 30),
+                      color: Colors.black,
+                      onPressed: () {
+                        Navigator.pop(context); // Go back to home screen
+                      },
+                    ),
+                    FloatingActionButton(
+                      onPressed: () {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const CreateEventScreen(),
+                          ),
+                        );
+                      },
+                      backgroundColor: const Color(0xFF5E43C3),
+                      child:
+                          const Icon(Icons.add, color: Colors.white, size: 30),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.person, size: 30),
+                      color: const Color(
+                          0xFF5E43C3), // Highlighted color since we're on profile page
+                      onPressed: () {
+                        // Already on profile screen
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // This container ensures background extends below the navigation bar
+            Container(
+              height: MediaQuery.of(context).padding.bottom,
+              color: const Color(0xFFF2F2F2),
+            )
+          ],
+        ),
+      ),
     );
   }
 

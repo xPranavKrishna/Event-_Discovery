@@ -382,50 +382,6 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
             Expanded(
               child: Row(
                 children: [
-                  // Register Button - Show only if registration is required and link is available
-                  if (widget.event.requiresRegistration &&
-                      widget.event.registrationLink != null &&
-                      widget.event.registrationLink!.isNotEmpty)
-                    Expanded(
-                      flex: 1,
-                      child: ElevatedButton(
-                        onPressed: _launchRegistrationLink,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 15),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
-                              Icons.app_registration,
-                              size: 18,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Register',
-                              style: GoogleFonts.aBeeZee(
-                                textStyle: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                  // Add spacing between buttons if both are shown
-                  if (widget.event.requiresRegistration &&
-                      widget.event.registrationLink != null &&
-                      widget.event.registrationLink!.isNotEmpty)
-                    const SizedBox(width: 10),
-
                   // Interested Button
                   Expanded(
                     flex: widget.event.requiresRegistration &&

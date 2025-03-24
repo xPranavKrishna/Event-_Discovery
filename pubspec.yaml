@@ -56,6 +56,8 @@ dependencies:
   maps_launcher: ^3.0.0+1
   geocoding: ^3.0.0
   flutter_launcher_icons: ^0.14.3
+  http: ^1.3.0
+  flutter_dotenv: ^5.2.1
 
 dev_dependencies:
   flutter_test:
@@ -89,6 +91,7 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
+    - .env
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

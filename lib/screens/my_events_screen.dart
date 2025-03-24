@@ -49,33 +49,20 @@ class _MyEventsScreenState extends State<MyEventsScreen>
     });
 
     try {
-      // Load interested events from Firestore
       final userId = _currentUser?.uid;
       if (userId != null) {
-        // Query user interested events collection
-        final interestedSnapshot = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(userId)
-            .collection('interested_events')
+        // CHANGE: Directly query events where this user is in the interestedUsers array
+        final interestedEventsSnapshot = await FirebaseFirestore.instance
+            .collection('events')
+            .where('interestedUsers', arrayContains: userId)
             .get();
 
-        List<EventModel> interestedEvents = [];
+        List<EventModel> interestedEvents = interestedEventsSnapshot.docs
+            .map((doc) =>
+                EventModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+            .toList();
 
-        // For each interested event ID, fetch the full event details
-        for (var doc in interestedSnapshot.docs) {
-          String eventId = doc.id;
-          final eventDoc = await FirebaseFirestore.instance
-              .collection('events')
-              .doc(eventId)
-              .get();
-
-          if (eventDoc.exists) {
-            final eventData = eventDoc.data() as Map<String, dynamic>;
-            interestedEvents.add(EventModel.fromMap(eventData, eventId));
-          }
-        }
-
-        // Load hosted events
+        // Load hosted events - this part looks correct
         final hostedEventsSnapshot = await FirebaseFirestore.instance
             .collection('events')
             .where('organizerId', isEqualTo: userId)
@@ -113,7 +100,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
         elevation: 0,
         title: Text(
           'My Events',
-          style: GoogleFonts.londrinaSolid(
+          style: GoogleFonts.albertSans(
             textStyle: const TextStyle(
               fontSize: 28,
               color: Colors.white,
@@ -125,14 +112,14 @@ class _MyEventsScreenState extends State<MyEventsScreen>
           controller: _tabController,
           indicatorColor: Colors.white,
           indicatorWeight: 3,
-          labelStyle: GoogleFonts.londrinaSolid(
+          labelStyle: GoogleFonts.aBeeZee(
             textStyle: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
           ),
-          unselectedLabelStyle: GoogleFonts.londrinaSolid(
+          unselectedLabelStyle: GoogleFonts.aBeeZee(
             textStyle: const TextStyle(
               fontSize: 18,
               color: Colors.white70,
@@ -159,22 +146,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                 _buildHostedEventsTab(),
               ],
             ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // Navigate to create event screen
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Create Event functionality coming soon!',
-                style: GoogleFonts.londrinaSolid(),
-              ),
-              backgroundColor: const Color(0xFF5E43C3),
-            ),
-          );
-        },
-        backgroundColor: const Color(0xFF5E43C3),
-        child: const Icon(Icons.add),
-      ),
+      // Floating action button removed
     );
   }
 
@@ -205,7 +177,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
       return _buildEmptyState(
         icon: Icons.event_busy,
         message: 'You\'re not hosting any events',
-        subMessage: 'Tap the "+" button to create a new event',
+        subMessage: 'Create a new event from the home screen',
       );
     }
 
@@ -239,7 +211,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
           const SizedBox(height: 16),
           Text(
             message,
-            style: GoogleFonts.londrinaSolid(
+            style: GoogleFonts.abel(
               textStyle: TextStyle(
                 fontSize: 24,
                 color: Colors.grey[700],
@@ -250,7 +222,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
           const SizedBox(height: 8),
           Text(
             subMessage,
-            style: GoogleFonts.londrinaSolid(
+            style: GoogleFonts.aBeeZee(
               textStyle: TextStyle(
                 fontSize: 16,
                 color: Colors.grey[600],
@@ -333,7 +305,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                     ),
                     child: Text(
                       event.eventType,
-                      style: GoogleFonts.londrinaSolid(
+                      style: GoogleFonts.albertSans(
                         textStyle: const TextStyle(
                           fontSize: 14,
                           color: Colors.white,
@@ -363,8 +335,8 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            '${event.attendeeCount} interested',
-                            style: GoogleFonts.londrinaSolid(
+                            '${event.interestedCount} interested',
+                            style: GoogleFonts.abel(
                               textStyle: const TextStyle(
                                 fontSize: 14,
                                 color: Colors.white,
@@ -389,7 +361,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                       Expanded(
                         child: Text(
                           event.name,
-                          style: GoogleFonts.londrinaSolid(
+                          style: GoogleFonts.albertSans(
                             textStyle: TextStyle(
                               fontSize: 22,
                               color: Colors.grey[800],
@@ -409,12 +381,17 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                           onPressed: () async {
                             // Remove from interested events
                             try {
-                              await FirebaseFirestore.instance
-                                  .collection('users')
-                                  .doc(_currentUser?.uid)
-                                  .collection('interested_events')
-                                  .doc(event.id)
-                                  .delete();
+                              // Get the event document reference
+                              final eventRef = FirebaseFirestore.instance
+                                  .collection('events')
+                                  .doc(event.id);
+
+                              // Update the interestedUsers array to remove this user
+                              await eventRef.update({
+                                'interestedUsers':
+                                    FieldValue.arrayRemove([_currentUser?.uid]),
+                                'interestedCount': FieldValue.increment(-1)
+                              });
 
                               setState(() {
                                 _interestedEvents
@@ -425,7 +402,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                                 SnackBar(
                                   content: Text(
                                     'Removed from interested events',
-                                    style: GoogleFonts.londrinaSolid(),
+                                    style: GoogleFonts.aBeeZee(),
                                   ),
                                   backgroundColor: const Color(0xFF5E43C3),
                                 ),
@@ -435,7 +412,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                                 SnackBar(
                                   content: Text(
                                     'Error: Unable to remove event',
-                                    style: GoogleFonts.londrinaSolid(),
+                                    style: GoogleFonts.aBeeZee(),
                                   ),
                                   backgroundColor: Colors.red,
                                 ),
@@ -456,7 +433,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                       const SizedBox(width: 4),
                       Text(
                         '${event.eventDate.day}/${event.eventDate.month}/${event.eventDate.year} at ${event.eventDate.hour}:${event.eventDate.minute.toString().padLeft(2, '0')}',
-                        style: GoogleFonts.londrinaSolid(
+                        style: GoogleFonts.aBeeZee(
                           textStyle: TextStyle(
                             fontSize: 16,
                             color: Colors.grey[600],
@@ -477,7 +454,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                       Expanded(
                         child: Text(
                           event.location,
-                          style: GoogleFonts.londrinaSolid(
+                          style: GoogleFonts.aBeeZee(
                             textStyle: TextStyle(
                               fontSize: 16,
                               color: Colors.grey[600],
@@ -501,8 +478,8 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                       Text(
                         event.isFree
                             ? 'Free'
-                            : '\$${event.cost.toStringAsFixed(2)}',
-                        style: GoogleFonts.londrinaSolid(
+                            : '₹${event.cost.toStringAsFixed(2)}',
+                        style: GoogleFonts.abel(
                           textStyle: TextStyle(
                             fontSize: 16,
                             color:
@@ -537,7 +514,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                           ),
                           child: Text(
                             'Edit',
-                            style: GoogleFonts.londrinaSolid(
+                            style: GoogleFonts.albertSans(
                               textStyle: const TextStyle(
                                 fontSize: 14,
                                 color: Colors.white,
@@ -556,7 +533,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                           ),
                           child: Text(
                             'Going',
-                            style: GoogleFonts.londrinaSolid(
+                            style: GoogleFonts.albertSans(
                               textStyle: TextStyle(
                                 fontSize: 14,
                                 color: const Color(0xFF5E43C3),
@@ -584,7 +561,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                               Icons.visibility),
                           _buildVerticalDivider(),
                           _buildQuickStat('Interested',
-                              event.attendeeCount.toString(), Icons.favorite),
+                              event.interestedCount.toString(), Icons.favorite),
                           _buildVerticalDivider(),
                           _buildQuickStat(
                               'Going',
@@ -615,7 +592,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
             const SizedBox(width: 4),
             Text(
               value,
-              style: GoogleFonts.londrinaSolid(
+              style: GoogleFonts.albertSans(
                 textStyle: TextStyle(
                   fontSize: 18,
                   color: Colors.grey[800],
@@ -627,7 +604,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
         ),
         Text(
           label,
-          style: GoogleFonts.londrinaSolid(
+          style: GoogleFonts.abel(
             textStyle: TextStyle(
               fontSize: 14,
               color: Colors.grey[600],

@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:event_lister/screens/create_event_screen.dart';
 import 'package:event_lister/screens/profile_screen.dart';
+import 'package:event_lister/screens/location_selection_screen.dart';
 import 'package:event_lister/models/event_model.dart';
 import 'package:event_lister/widgets/event_card.dart';
 
@@ -17,6 +18,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   String _currentLocation = "Unknown Location";
+  double? _selectedLatitude;
+  double? _selectedLongitude;
   String _selectedCategory = "All";
   bool _isLoading = true;
   bool _isLocationPermissionDenied = false;
@@ -330,7 +333,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      // Get all events
       QuerySnapshot eventSnapshot =
           await FirebaseFirestore.instance.collection('events').get();
 
@@ -339,10 +341,16 @@ class _HomeScreenState extends State<HomeScreen> {
       for (var doc in eventSnapshot.docs) {
         EventModel event = EventModel.fromFirestore(doc);
 
-        // If user position is available and event has location, filter by distance
-        if (_userPosition != null &&
-            event.latitude != null &&
-            event.longitude != null) {
+        // Skip events without location data
+        if (event.latitude == null || event.longitude == null) {
+          events.add(event);
+          continue;
+        }
+
+        bool withinRadius = false;
+
+        // Check if we have device position
+        if (_userPosition != null) {
           double distance = Geolocator.distanceBetween(
                 _userPosition!.latitude,
                 _userPosition!.longitude,
@@ -351,12 +359,27 @@ class _HomeScreenState extends State<HomeScreen> {
               ) /
               1000; // Convert to kilometers
 
-          // Only add events within the search radius
-          if (distance <= _searchRadius) {
-            events.add(event);
-          }
-        } else {
-          // If no location data available (either user or event), add it anyway
+          withinRadius = distance <= _searchRadius;
+        }
+
+        // If not within radius from device position, check selected location
+        if (!withinRadius &&
+            _selectedLatitude != null &&
+            _selectedLongitude != null) {
+          double distance = Geolocator.distanceBetween(
+                _selectedLatitude!,
+                _selectedLongitude!,
+                event.latitude!,
+                event.longitude!,
+              ) /
+              1000; // Convert to kilometers
+
+          withinRadius = distance <= _searchRadius;
+        }
+
+        // If no location filtering is active or event is within radius, add it
+        if ((_userPosition == null && _selectedLatitude == null) ||
+            withinRadius) {
           events.add(event);
         }
       }
@@ -415,6 +438,27 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // Add this after _refreshLocation() method
+  void _selectLocation() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => LocationSelectionScreen(
+          currentLocation: _currentLocation,
+          onLocationSelected: (location, latitude, longitude) {
+            setState(() {
+              _currentLocation = location;
+              _selectedLatitude = latitude;
+              _selectedLongitude = longitude;
+              _isLocationPermissionDenied = false;
+            });
+            fetchEvents();
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final filteredEvents = getFilteredEvents();
@@ -444,8 +488,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   // Location
+                  // Replace the existing InkWell with this
                   InkWell(
-                    onTap: _refreshLocation,
+                    onTap:
+                        _selectLocation, // Changed from _refreshLocation to _selectLocation
                     borderRadius: BorderRadius.circular(30),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
@@ -482,7 +528,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           const SizedBox(width: 2),
                           Icon(
-                            Icons.refresh,
+                            Icons
+                                .arrow_drop_down, // Changed from refresh to arrow_drop_down
                             size: 14,
                             color: _isLocationPermissionDenied
                                 ? Colors.red
@@ -650,7 +697,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               ),
                               const SizedBox(height: 20),
-                              // REDUCED BUTTON SIZE HERE
                               ElevatedButton(
                                 onPressed: _refreshLocation,
                                 style: ElevatedButton.styleFrom(
@@ -689,12 +735,19 @@ class _HomeScreenState extends State<HomeScreen> {
                             ],
                           ),
                         )
-                      : ListView.builder(
-                          itemCount: searchedEvents.length,
-                          padding: const EdgeInsets.all(20),
-                          itemBuilder: (context, index) {
-                            return EventCard(event: searchedEvents[index]);
+                      : RefreshIndicator(
+                          onRefresh: () async {
+                            // This function will be called when the user pulls down
+                            await fetchEvents();
                           },
+                          color: const Color(0xFF5E43C3),
+                          child: ListView.builder(
+                            itemCount: searchedEvents.length,
+                            padding: const EdgeInsets.all(20),
+                            itemBuilder: (context, index) {
+                              return EventCard(event: searchedEvents[index]);
+                            },
+                          ),
                         ),
             ),
           ],

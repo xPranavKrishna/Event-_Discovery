@@ -73,30 +73,19 @@ class _SignupScreenState extends State<SignupScreen>
         password: _passwordController.text,
       );
 
-      print("User created with ID: ${userCredential.user?.uid}");
-
       // Update display name
       await userCredential.user?.updateDisplayName(_nameController.text.trim());
 
-      // Force reload user to ensure we have latest data
-      await userCredential.user?.reload();
+      final user = userCredential.user;
 
-      // Send verification email - use the current user instance
-      User? user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        try {
-          await user.sendEmailVerification();
-          print("Verification email sent successfully to: ${user.email}");
-        } catch (e) {
-          print("Error sending verification email: $e");
-          throw Exception("Failed to send verification email: $e");
-        }
+        // Send verification email
+        await user.sendEmailVerification();
 
-        // Sign out the user to force them to verify email before logging in
+        // Sign out to force verification before login
         await FirebaseAuth.instance.signOut();
 
         if (mounted) {
-          // Show verification message
           showCustomSnackBar(
             context,
             'Account created successfully! Please check your email to verify your account before logging in.',
@@ -114,10 +103,7 @@ class _SignupScreenState extends State<SignupScreen>
         throw Exception('User is null after creation');
       }
     } on FirebaseAuthException catch (e) {
-      print("Firebase Auth Exception: ${e.code} - ${e.message}");
-      setState(() {
-        _isLoading = false;
-      });
+      print("Firebase Auth Exception: \${e.code} - \${e.message}");
 
       String errorMessage = 'An error occurred. Please try again.';
 
@@ -135,17 +121,20 @@ class _SignupScreenState extends State<SignupScreen>
         showCustomSnackBar(context, errorMessage, isError: true);
       }
     } catch (e) {
-      print("Unexpected error during signup: $e");
-      setState(() {
-        _isLoading = false;
-      });
+      print("Unexpected error during signup: \$e");
 
       if (mounted) {
         showCustomSnackBar(
           context,
-          'An unexpected error occurred: ${e.toString()}',
+          'An unexpected error occurred: \${e.toString()}',
           isError: true,
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
