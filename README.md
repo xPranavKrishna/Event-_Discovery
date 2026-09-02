@@ -1,16 +1,24 @@
-# event_lister
+# GatherUp 🎉
 
-A new Flutter project.
+GatherUp is an event discovery and booking mobile application built using Flutter and Firebase.
 
+## Features
+
+- User authentication
+- Discover nearby events
+- Create and host events
+- Book and cancel events
+- Map and location support
+
+
+## Tech Stack
+
+- Flutter
+- Dart
+- Firebase
+- Cloud Firestore
+- Firebase Authentication
+- Firebase Storage
+
+**Author:** Pranav Krishna
 ## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
